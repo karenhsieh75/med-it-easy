@@ -18,6 +18,13 @@ Follow the official installation guide:
 uv sync
 ```
 
+### Environment Setup
+Create a `.env` file in the root directory and add your Google Gemini API key:
+
+```bash
+GOOGLE_API_KEY=
+```
+
 ## ▶️ Run the App
 ### Start the backend
 

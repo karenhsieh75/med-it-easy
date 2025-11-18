@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Text
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -82,7 +82,7 @@ class SymptomLog(SQLModel, table=True):
     appointment_id: int = Field(foreign_key="appointments.id")
     
     sender_role: str  # 'patient' or 'ai'
-    content: str = Field(sa_column_kwargs={"type_": "TEXT"})
+    content: str = Field(sa_type=Text)
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Relationship
@@ -97,12 +97,12 @@ class MedicalRecord(SQLModel, table=True):
     appointment_id: int = Field(foreign_key="appointments.id", unique=True)
     
     # AI Generated Content (Helper)
-    ai_summary: Optional[str] = Field(default=None, sa_column_kwargs={"type_": "TEXT"})
-    ai_disease_prediction: Optional[str] = Field(default=None, sa_column_kwargs={"type_": "TEXT"})
+    ai_summary: Optional[str] = Field(default=None, sa_type=Text)
+    ai_disease_prediction: Optional[str] = Field(default=None, sa_type=Text)
     
     # Doctor's Input (Final Decision)
-    doctor_diagnosis: Optional[str] = Field(default=None, sa_column_kwargs={"type_": "TEXT"})
-    prescription: Optional[str] = Field(default=None, sa_column_kwargs={"type_": "TEXT"})
+    doctor_diagnosis: Optional[str] = Field(default=None, sa_type=Text)
+    prescription: Optional[str] = Field(default=None, sa_type=Text)
     
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

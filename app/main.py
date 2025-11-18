@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .database import create_db_and_tables
+from .routers import appointment
 
 app = FastAPI()
 
@@ -16,7 +17,7 @@ app.add_middleware(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-    print("Staring Service...")
+    print("Starting Service...")
     yield
     print("Shutting Down Service...")
 
@@ -25,3 +26,5 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/")
 def root():
     return {"message": "Med It Easy Backend is running!"}
+
+app.include_router(appointment.router)

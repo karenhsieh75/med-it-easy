@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .database import create_db_and_tables
-from .routers import appointment
+from .routers import ai, appointment
 
 app = FastAPI()
 
@@ -27,4 +27,5 @@ app = FastAPI(lifespan=lifespan)
 def root():
     return {"message": "Med It Easy Backend is running!"}
 
+app.include_router(ai.router)
 app.include_router(appointment.router)

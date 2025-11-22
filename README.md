@@ -26,6 +26,12 @@ GOOGLE_API_KEY=
 ```
 
 ## ▶️ Run the App
+### Mock database
+
+```bash
+python seed_data.py
+```
+
 ### Start the backend
 
 ```bash

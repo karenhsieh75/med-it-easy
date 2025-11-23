@@ -71,8 +71,8 @@ def get_appointment(appointment_id: int, session: Session = Depends(get_session)
 
 @router.get("/", response_model=List[AppointmentPublic])
 def read_appointments(
-    patient_id: int | None = None,
-    doctor_id: int | None = None,
+    patient_id: Optional[int] = None,
+    doctor_id: Optional[int] = None,
     session: Session = Depends(get_session)
 ):
     """

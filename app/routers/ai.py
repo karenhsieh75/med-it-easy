@@ -1,10 +1,23 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
-import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+
+# --- Compatibility shim for Python 3.9 (importlib.metadata lacks packages_distributions) ---
+try:
+    import importlib.metadata as importlib_metadata  # type: ignore
+    if not hasattr(importlib_metadata, "packages_distributions"):
+        try:
+            import importlib_metadata as backport  # backport module
+            importlib_metadata.packages_distributions = backport.packages_distributions  # type: ignore
+        except Exception:
+            pass
+except Exception:
+    pass
+
+import google.generativeai as genai
 from ..database import get_session
 from ..models import SymptomLog, Appointment, MedicalRecord
 

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
-import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+import importlib.metadata as importlib_metadata 
+
+import google.generativeai as genai
 from ..database import get_session
 from ..models import SymptomLog, Appointment, MedicalRecord
 

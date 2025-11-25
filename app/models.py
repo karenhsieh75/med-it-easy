@@ -41,6 +41,10 @@ class User(SQLModel, table=True):
         back_populates="patient", 
         sa_relationship_kwargs={"foreign_keys": "Appointment.patient_id"}
     )
+    analysis_records: List["AnalysisRecord"] = Relationship(
+        back_populates="patient",
+        sa_relationship_kwargs={"foreign_keys": "AnalysisRecord.patient_id"}
+    )
 
 
 class Appointment(SQLModel, table=True):
@@ -109,3 +113,20 @@ class MedicalRecord(SQLModel, table=True):
 
     # Relationship
     appointment: Appointment = Relationship(back_populates="medical_record")
+
+
+class AnalysisRecord(SQLModel, table=True):
+    """Generic analysis result holder (e.g., skin tone, symmetry, etc.)."""
+    __tablename__ = "analysis_records"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_id: int = Field(foreign_key="users.id", index=True)
+    analysis_type: str = Field(index=True, description="Type of analysis (e.g., skin_tone)")
+    analysis_result: str = Field(sa_type=Text, description="Serialized JSON/text payload")
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Relationship
+    patient: User = Relationship(
+        back_populates="analysis_records",
+        sa_relationship_kwargs={"foreign_keys": "[AnalysisRecord.patient_id]"}
+    )

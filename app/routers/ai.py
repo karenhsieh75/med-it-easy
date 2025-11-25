@@ -4,18 +4,7 @@ from sqlmodel import Session, select
 import os
 import json
 from dotenv import load_dotenv
-
-# --- Compatibility shim for Python 3.9 (importlib.metadata lacks packages_distributions) ---
-try:
-    import importlib.metadata as importlib_metadata  # type: ignore
-    if not hasattr(importlib_metadata, "packages_distributions"):
-        try:
-            import importlib_metadata as backport  # backport module
-            importlib_metadata.packages_distributions = backport.packages_distributions  # type: ignore
-        except Exception:
-            pass
-except Exception:
-    pass
+import importlib.metadata as importlib_metadata 
 
 import google.generativeai as genai
 from ..database import get_session

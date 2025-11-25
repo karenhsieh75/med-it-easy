@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .database import create_db_and_tables
-from .routers import ai, appointment, analysis
+from .routers import ai, appointment, analysis, user
 
 app = FastAPI()
 
@@ -30,3 +30,4 @@ def root():
 app.include_router(ai.router)
 app.include_router(appointment.router)
 app.include_router(analysis.router)
+app.include_router(user.router)

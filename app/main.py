@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from .database import create_db_and_tables
-from .routers import ai, appointment, analysis, user, medical_records
+from .routers import ai, appointment, analysis, user, medical_records, symptoms
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,10 +25,11 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
-app.include_router(ai.router)
+app.include_router(user.router)
 app.include_router(appointment.router)
 app.include_router(analysis.router)
-app.include_router(user.router)
+app.include_router(symptoms.router)
+app.include_router(ai.router)
 app.include_router(medical_records.router)
 
 @app.get("/")

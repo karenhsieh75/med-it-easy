@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field, Relationship, Text
-from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey, JSON
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -103,7 +103,7 @@ class Symptom(SQLModel, table=True):
     appointment_id: int = Field(sa_column=Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), unique=True))
     
     description: str = Field(sa_type=Text)
-    common_symptoms: str = Field(sa_type=Text) # 複選症狀 (逗號分隔)
+    symptoms: List[str] = Field(sa_column=Column(JSON))
     duration: str
     severity: str
     notes: Optional[str] = Field(default=None, sa_type=Text)

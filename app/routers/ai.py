@@ -8,7 +8,7 @@ import importlib.metadata as importlib_metadata
 
 import google.generativeai as genai
 from ..database import get_session
-from ..models import SymptomLog, Appointment, MedicalRecord
+from ..models import ChatLog, Appointment, MedicalRecord
 
 load_dotenv()
 
@@ -30,7 +30,7 @@ async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_sess
 
     try:
         # 2. 儲存使用者的訊息到資料庫
-        user_log = SymptomLog(
+        user_log = ChatLog(
             appointment_id=request.appointment_id,
             sender_role="patient",
             content=request.message
@@ -40,9 +40,9 @@ async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_sess
 
         # 3. 從資料庫撈出過去的歷史對話
         logs = session.exec(
-            select(SymptomLog)
-            .where(SymptomLog.appointment_id == request.appointment_id)
-            .order_by(SymptomLog.created_at)
+            select(ChatLog)
+            .where(ChatLog.appointment_id == request.appointment_id)
+            .order_by(ChatLog.created_at)
         ).all()
 
         # 4. 轉換成 Gemini 看得懂的格式 (user/model)
@@ -99,7 +99,7 @@ async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_sess
             ai_advice = "系統無法解析 AI 回應的 JSON 格式，請再試一次，或更換 Prompt。"
         
         # 8. 儲存 AI 的回覆到資料庫 (只存乾淨的 advice)
-        ai_log = SymptomLog(
+        ai_log = ChatLog(
             appointment_id=request.appointment_id,
             sender_role="ai",
             content=ai_advice 

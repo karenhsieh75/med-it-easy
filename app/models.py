@@ -74,13 +74,14 @@ class Appointment(SQLModel, table=True):
     )
     
     # Links to chat logs and medical records
-    symptoms: List["SymptomLog"] = Relationship(back_populates="appointment")
+    chat_logs: List["ChatLog"] = Relationship(back_populates="appointment")
+    symptom: Optional["Symptom"] = Relationship(back_populates="appointment")
     medical_record: Optional["MedicalRecord"] = Relationship(back_populates="appointment")
 
 
-class SymptomLog(SQLModel, table=True):
-    """Stores the chat history and symptom descriptions from the AI interview."""
-    __tablename__ = "symptoms"
+class ChatLog(SQLModel, table=True):
+    """Stores the chat history from the AI interview."""
+    __tablename__ = "chat_logs"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     appointment_id: int = Field(foreign_key="appointments.id")
@@ -90,7 +91,26 @@ class SymptomLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Relationship
-    appointment: Appointment = Relationship(back_populates="symptoms")
+    appointment: Appointment = Relationship(back_populates="chat_logs")
+
+
+class Symptom(SQLModel, table=True):
+    """Stores patient-reported symptoms for an appointment."""
+    __tablename__ = "symptoms"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    appointment_id: int = Field(foreign_key="appointments.id")
+    
+    description: str = Field(sa_type=Text)
+    common_symptoms: str = Field(sa_type=Text) # 複選症狀 (逗號分隔)
+    duration: str
+    severity: str
+    notes: Optional[str] = Field(default=None, sa_type=Text)
+    created_at: datetime = Field(default_factory=datetime.now)
+    analysis_record_id: Optional[int] = Field(default=None, foreign_key="analysis_records.id")
+
+    appointment: Appointment = Relationship(back_populates="symptom")
+    analysis_record: Optional["AnalysisRecord"] = Relationship(back_populates="symptom")
 
 
 class MedicalRecord(SQLModel, table=True):
@@ -130,3 +150,4 @@ class AnalysisRecord(SQLModel, table=True):
         back_populates="analysis_records",
         sa_relationship_kwargs={"foreign_keys": "[AnalysisRecord.patient_id]"}
     )
+    symptom: Optional["Symptom"] = Relationship(back_populates="analysis_record")

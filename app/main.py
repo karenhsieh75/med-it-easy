@@ -4,16 +4,6 @@ from contextlib import asynccontextmanager
 from .database import create_db_and_tables
 from .routers import ai, appointment, analysis, user
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
@@ -22,6 +12,14 @@ async def lifespan(app: FastAPI):
     print("Shutting Down Service...")
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():

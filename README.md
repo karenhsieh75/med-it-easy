@@ -29,13 +29,16 @@ GOOGLE_API_KEY=
 ### Mock database
 
 ```bash
-python seed_data.py
+uv run seed_data.py
 ```
 
-### Start the backend
+### Start the app
 
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
+Web Page: http://localhost:8000  
+  
 Swagger Docs: http://localhost:8000/docs
+ 

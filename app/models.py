@@ -1,4 +1,5 @@
 from sqlmodel import SQLModel, Field, Relationship, Text
+from sqlalchemy import Column, Integer, ForeignKey
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -54,8 +55,8 @@ class Appointment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     
     # Foreign Keys
-    patient_id: int = Field(foreign_key="users.id")
-    doctor_id: int = Field(foreign_key="users.id")
+    patient_id: int = Field(sa_column=Column(Integer, ForeignKey("users.id", ondelete="CASCADE")))
+    doctor_id: int = Field(sa_column=Column(Integer, ForeignKey("users.id", ondelete="CASCADE")))
     
     date: str  # Format: YYYY-MM-DD
     time: str  # Format: HH:MM
@@ -84,7 +85,7 @@ class ChatLog(SQLModel, table=True):
     __tablename__ = "chat_logs"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    appointment_id: int = Field(foreign_key="appointments.id")
+    appointment_id: int = Field(sa_column=Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE")))
     
     sender_role: str  # 'patient' or 'ai'
     content: str = Field(sa_type=Text)
@@ -99,7 +100,7 @@ class Symptom(SQLModel, table=True):
     __tablename__ = "symptoms"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    appointment_id: int = Field(foreign_key="appointments.id")
+    appointment_id: int = Field(sa_column=Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), unique=True))
     
     description: str = Field(sa_type=Text)
     common_symptoms: str = Field(sa_type=Text) # 複選症狀 (逗號分隔)
@@ -118,7 +119,7 @@ class MedicalRecord(SQLModel, table=True):
     __tablename__ = "medical_records"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    appointment_id: int = Field(foreign_key="appointments.id", unique=True)
+    appointment_id: int = Field(sa_column=Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), unique=True))
     
     # AI Generated Content (Helper)
     ai_summary: Optional[str] = Field(default=None, sa_type=Text)
@@ -140,7 +141,7 @@ class AnalysisRecord(SQLModel, table=True):
     __tablename__ = "analysis_records"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    patient_id: int = Field(foreign_key="users.id", index=True)
+    patient_id: int = Field(sa_column=Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True))
     analysis_type: str = Field(index=True, description="Type of analysis (e.g., skin_tone)")
     analysis_result: str = Field(sa_type=Text, description="Serialized JSON/text payload")
     created_at: datetime = Field(default_factory=datetime.now)

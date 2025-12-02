@@ -595,7 +595,7 @@
       // API 基礎 URL（後端服務地址）
       // 部署時請修改此處為實際的後端服務地址
       // 例如：const API_BASE_URL = "https://your-backend-domain.com";
-      const API_BASE_URL = "http://localhost:8000";
+      const API_BASE_URL = "http://127.0.0.1:8000";
 
       const featureConfigs = [
         {
@@ -1279,7 +1279,7 @@
 
             // 2. 將所有症狀資訊送到後端，存到 SymptomLog 表
             const symptomResponse = await fetch(
-              `${API_BASE_URL}/api/appointment/symptoms`,
+              `${API_BASE_URL}/api/symptoms`,
               {
                 method: "POST",
                 headers: {
@@ -1291,7 +1291,7 @@
                   duration: symptomForm.duration,
                   severity: symptomForm.severity,
                   symptoms: symptomForm.symptoms, // 複選症狀陣列
-                  additionalNotes: symptomForm.additionalNotes || "",
+                  notes: symptomForm.additionalNotes || "",
                 }),
               }
             );

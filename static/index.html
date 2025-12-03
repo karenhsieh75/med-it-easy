@@ -827,7 +827,6 @@
           duration: "",
           severity: "",
           symptoms: [],
-          additionalNotes: "",
         });
         // 症狀照片上傳狀態（僅前端用來暫存檔案與顯示提示）
         const [symptomImageFile, setSymptomImageFile] = useState(null);
@@ -934,6 +933,35 @@
 
           loadDoctorsAndDepartments();
         }, []);
+
+        // 如果有預約 ID，從後端載入預約資料（用於顯示已完成的預約）
+        useEffect(() => {
+          const loadAppointmentData = async () => {
+            if (!currentAppointmentId || !appointmentCompleted) return;
+            if (doctors.length === 0) return; // 等待醫師列表載入完成
+
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/appointment/${currentAppointmentId}`);
+              if (response.ok) {
+                const appointmentData = await response.json();
+                // 找到對應的醫師資訊
+                const selectedDoctor = doctors.find(d => d.id === appointmentData.doctor_id);
+                setAppointmentForm({
+                  date: appointmentData.date,
+                  time: appointmentData.time,
+                  doctor: selectedDoctor ? selectedDoctor.full_name : "",
+                  doctorId: appointmentData.doctor_id.toString(),
+                  department: appointmentData.department,
+                  reason: appointmentForm.reason, // 保留現有的原因（如果有的話）
+                });
+              }
+            } catch (error) {
+              console.error("載入預約資料失敗:", error);
+            }
+          };
+
+          loadAppointmentData();
+        }, [currentAppointmentId, appointmentCompleted, doctors]);
 
         // 在左側浮動視窗內更新選擇狀態與輸入訊息
         const selectFeature = (feature) => {
@@ -1293,12 +1321,71 @@
              document.addEventListener("mousedown", handleClickOutside);
            }
 
-           return () => {
-             document.removeEventListener("mousedown", handleClickOutside);
-           };
-         }, [menuOpen]);
+          return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+          };
+        }, [menuOpen]);
 
-         // 處理預約表單提交（連接到後端 API）
+        // 檢查是否已有症狀資料（當切換到症狀頁面或載入時）
+        useEffect(() => {
+          const checkExistingSymptom = async () => {
+            // 只有在登入且有預約 ID 時才檢查
+            if (!isLoggedIn || !currentAppointmentId) {
+              const savedAppointmentId = localStorage.getItem("currentAppointmentId");
+              if (!savedAppointmentId) {
+                setSymptomCompleted(false);
+                return;
+              }
+              // 如果有保存的預約 ID，使用它
+              const appointmentId = parseInt(savedAppointmentId);
+              try {
+                const response = await fetch(`${API_BASE_URL}/api/symptoms/${appointmentId}`);
+                if (response.ok) {
+                  const symptomData = await response.json();
+                  setSymptomForm({
+                    description: symptomData.description,
+                    duration: symptomData.duration,
+                    severity: symptomData.severity,
+                    symptoms: symptomData.symptoms || [],
+                  });
+                  setSymptomCompleted(true);
+                } else {
+                  setSymptomCompleted(false);
+                }
+              } catch (error) {
+                console.error("檢查症狀資料失敗:", error);
+                setSymptomCompleted(false);
+              }
+              return;
+            }
+
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/symptoms/${currentAppointmentId}`);
+              if (response.ok) {
+                const symptomData = await response.json();
+                setSymptomForm({
+                  description: symptomData.description,
+                  duration: symptomData.duration,
+                  severity: symptomData.severity,
+                  symptoms: symptomData.symptoms || [],
+                });
+                setSymptomCompleted(true);
+              } else {
+                setSymptomCompleted(false);
+              }
+            } catch (error) {
+              console.error("檢查症狀資料失敗:", error);
+              setSymptomCompleted(false);
+            }
+          };
+
+          // 當切換到症狀頁面時檢查
+          if (activeFeature.id === "symptom" && isLoggedIn) {
+            checkExistingSymptom();
+          }
+        }, [activeFeature.id, isLoggedIn, currentAppointmentId]);
+
+        // 處理預約表單提交（連接到後端 API）
          const handleAppointmentSubmit = async (e) => {
            e.preventDefault();
            
@@ -1336,15 +1423,49 @@
                // 預約成功，儲存預約 ID 供後續 AI 問診使用（同時更新 localStorage）
                updateCurrentAppointmentId(data.id);
                setAppointmentCompleted(true); // 同時更新狀態，讓 UI 立即反映
+               
+               // 從後端獲取完整的預約資料（包含醫師名稱等）
+               try {
+                 const appointmentDetailResponse = await fetch(`${API_BASE_URL}/api/appointment/${data.id}`);
+                 if (appointmentDetailResponse.ok) {
+                   const appointmentDetail = await appointmentDetailResponse.json();
+                   // 找到對應的醫師資訊
+                   const selectedDoctor = doctors.find(d => d.id === appointmentDetail.doctor_id);
+                   setAppointmentForm({
+                     date: appointmentDetail.date,
+                     time: appointmentDetail.time,
+                     doctor: selectedDoctor ? selectedDoctor.full_name : "",
+                     doctorId: appointmentDetail.doctor_id.toString(),
+                     department: appointmentDetail.department,
+                     reason: appointmentForm.reason, // 保留用戶輸入的原因（如果有的話）
+                   });
+                 } else {
+                   // 如果獲取失敗，使用當前表單資料
+                   setAppointmentForm({
+                     date: appointmentForm.date,
+                     time: appointmentForm.time,
+                     doctor: appointmentForm.doctor,
+                     doctorId: appointmentForm.doctorId,
+                     department: appointmentForm.department,
+                     reason: appointmentForm.reason,
+                   });
+                 }
+               } catch (error) {
+                 // 如果獲取失敗，使用當前表單資料
+                 console.error("獲取預約詳情失敗:", error);
+                 setAppointmentForm({
+                   date: appointmentForm.date,
+                   time: appointmentForm.time,
+                   doctor: appointmentForm.doctor,
+                   doctorId: appointmentForm.doctorId,
+                   department: appointmentForm.department,
+                   reason: appointmentForm.reason,
+                 });
+               }
+               
                alert(`預約成功！預約編號：${data.id}`);
-               setAppointmentForm({
-                 date: "",
-                 time: "",
-                 doctor: "",
-                 doctorId: "",
-                 department: "",
-                 reason: "",
-               });
+               // 自動跳轉到填寫症狀頁面
+               setActiveFeature(featureConfigs.find(f => f.id === "symptom"));
              } else {
                alert(data.detail || "預約失敗，請檢查輸入資訊。");
              }
@@ -1357,6 +1478,12 @@
         // 處理症狀表單提交（若有上傳照片則一併呼叫膚色分析 API，並將所有症狀資訊送到後端）
         const handleSymptomSubmit = async (e) => {
           e.preventDefault();
+
+          // 如果症狀已提交，阻止再次提交
+          if (symptomCompleted) {
+            alert("症狀資訊已提交，無法再次修改。");
+            return;
+          }
 
           // 若使用者尚未登入，無法辨識 patient_id，因此阻擋並提示
           if (!isLoggedIn || !currentUser) {
@@ -1458,7 +1585,7 @@
                   duration: symptomForm.duration,
                   severity: symptomForm.severity,
                   symptoms: symptomForm.symptoms, // 複選症狀陣列
-                  notes: symptomForm.additionalNotes || "",
+                  notes: "", // 已移除其他補充說明欄位
                 }),
               }
             );
@@ -1483,16 +1610,15 @@
             alert("✅ 症狀資訊已成功提交！");
             setSymptomCompleted(true); // 標記症狀表單已完成
             
-            // 清空表單
+            // 從後端獲取完整的症狀資料並填充到表單中（保持顯示已提交的資料）
             setSymptomForm({
-              description: "",
-              duration: "",
-              severity: "",
-              symptoms: [],
-              additionalNotes: "",
+              description: symptomResult.description,
+              duration: symptomResult.duration,
+              severity: symptomResult.severity,
+              symptoms: symptomResult.symptoms || [],
             });
-            setSymptomImageFile(null);
-            setSymptomImageStatus("");
+            // 保留圖片上傳狀態（如果有的話）
+            // setSymptomImageFile 和 setSymptomImageStatus 保持不變
           } catch (error) {
             console.error("症狀提交或照片上傳發生錯誤:", error);
             alert("提交症狀或上傳照片時發生錯誤，請確認後端服務是否正常運行。");
@@ -1549,16 +1675,43 @@
               {currentUser?.role !== "doctor" && (
 
               <div className="chat-box">
-                <label htmlFor="chat-input">快速訊息</label>
-                <textarea
-                  id="chat-input"
-                  placeholder="輸入想詢問的內容..."
-                  value={draftMessage}
-                  onChange={(event) => setDraftMessage(event.target.value)}
-                />
-                <button type="button" onClick={handleSend}>
-                  送出訊息
-                </button>
+                <div style={{
+                  width: "100%",
+                  height: "120px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "12px",
+                  border: "1px solid #1a3a5c",
+                  background: "#1a3a5c",
+                  overflow: "hidden",
+                  position: "relative"
+                }}>
+                  <img 
+                    src="/static/logo.png" 
+                    alt="Logo" 
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      width: "auto",
+                      height: "auto",
+                      objectFit: "contain",
+                      padding: "10px"
+                    }}
+                    onError={(e) => {
+                      // 如果圖片載入失敗，顯示提示文字
+                      e.target.style.display = "none";
+                      const parent = e.target.parentNode;
+                      if (!parent.querySelector('.logo-placeholder')) {
+                        const placeholder = document.createElement("div");
+                        placeholder.className = "logo-placeholder";
+                        placeholder.textContent = "請將 logo 圖片放置於 static/logo.png";
+                        placeholder.style.cssText = "color: #fff; font-size: 12px; text-align: center; padding: 20px; position: absolute;";
+                        parent.appendChild(placeholder);
+                      }
+                    }}
+                  />
+                </div>
               </div>
               )}
             </aside>
@@ -1934,7 +2087,14 @@
                         onChange={(e) =>
                           setAppointmentForm({ ...appointmentForm, date: e.target.value })
                         }
+                        min={new Date().toISOString().split('T')[0]}
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
                     <div className="form-group">
@@ -1946,6 +2106,12 @@
                           setAppointmentForm({ ...appointmentForm, time: e.target.value })
                         }
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇時間</option>
                         <option value="09:00">09:00</option>
@@ -1972,6 +2138,12 @@
                           });
                         }}
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇科別</option>
                         {departments.map((dept) => (
@@ -1996,7 +2168,12 @@
                           });
                         }}
                         required
-                        disabled={!appointmentForm.department}
+                        disabled={!appointmentForm.department || appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇醫師</option>
                         {doctors
@@ -2017,26 +2194,51 @@
                         onChange={(e) =>
                           setAppointmentForm({ ...appointmentForm, reason: e.target.value })
                         }
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => {
-                        setAppointmentForm({
-                          date: "",
-                          time: "",
-                          doctor: "",
-                          doctorId: "",
-                          department: "",
-                          reason: "",
-                        });
-                        setAppointmentCompleted(false); // 清除時重置完成狀態
-                        updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
+                    {appointmentCompleted && (
+                      <div style={{
+                        padding: "12px",
+                        borderRadius: "12px",
+                        background: "#fff7e0",
+                        border: "1px dashed #e7b86d",
+                        color: "#8a641f",
+                        marginBottom: "16px"
                       }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        確認預約
-                      </button>
+                        <strong>預約已完成</strong>
+                        <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                          您的預約資訊已確認，無法再修改。如需變更，請聯繫客服。
+                        </p>
+                      </div>
+                    )}
+                    <div className="form-actions">
+                      {!appointmentCompleted && (
+                        <>
+                          <button type="button" className="btn-secondary" onClick={() => {
+                            setAppointmentForm({
+                              date: "",
+                              time: "",
+                              doctor: "",
+                              doctorId: "",
+                              department: "",
+                              reason: "",
+                            });
+                            setAppointmentCompleted(false); // 清除時重置完成狀態
+                            updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
+                          }}>
+                            清除
+                          </button>
+                          <button type="submit" className="btn-primary">
+                            確認預約
+                          </button>
+                        </>
+                      )}
                     </div>
                   </form>
                 )}
@@ -2054,6 +2256,12 @@
                           setSymptomForm({ ...symptomForm, description: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
                     <div className="symptom-category">
@@ -2064,13 +2272,19 @@
                             key={symptom}
                             className={`checkbox-item ${
                               symptomForm.symptoms.includes(symptom) ? "checked" : ""
-                            }`}
-                            onClick={() => toggleSymptom(symptom)}
+                            } ${symptomCompleted ? "disabled" : ""}`}
+                            onClick={() => !symptomCompleted && toggleSymptom(symptom)}
+                            style={symptomCompleted ? { 
+                              opacity: 0.6,
+                              cursor: "not-allowed",
+                              pointerEvents: "none"
+                            } : {}}
                           >
                             <input
                               type="checkbox"
                               checked={symptomForm.symptoms.includes(symptom)}
-                              onChange={() => toggleSymptom(symptom)}
+                              onChange={() => !symptomCompleted && toggleSymptom(symptom)}
+                              disabled={symptomCompleted}
                             />
                             <label>{symptom}</label>
                           </div>
@@ -2086,6 +2300,12 @@
                           setSymptomForm({ ...symptomForm, duration: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇持續時間</option>
                         <option value="1天以內">1天以內</option>
@@ -2104,6 +2324,12 @@
                           setSymptomForm({ ...symptomForm, severity: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇嚴重程度</option>
                         <option value="輕微">輕微</option>
@@ -2113,17 +2339,6 @@
                       </select>
                     </div>
                     <div className="form-group">
-                      <label htmlFor="symptom-notes">其他補充說明</label>
-                      <textarea
-                        id="symptom-notes"
-                        placeholder="如有其他相關資訊，請在此補充..."
-                        value={symptomForm.additionalNotes}
-                        onChange={(e) =>
-                          setSymptomForm({ ...symptomForm, additionalNotes: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="form-group">
                       <label htmlFor="symptom-face-image">
                         上傳臉部照片（JPG，僅正面五官）
                       </label>
@@ -2131,7 +2346,9 @@
                         id="symptom-face-image"
                         type="file"
                         accept="image/jpeg"
+                        disabled={symptomCompleted}
                         onChange={(e) => {
+                          if (symptomCompleted) return;
                           const file = e.target.files && e.target.files[0];
                           // 僅在有選擇檔案時更新狀態
                           if (file) {
@@ -2144,6 +2361,10 @@
                             setSymptomImageStatus("");
                           }
                         }}
+                        style={symptomCompleted ? { 
+                          opacity: 0.6,
+                          cursor: "not-allowed"
+                        } : {}}
                       />
                       {symptomImageStatus && (
                         <small style={{ color: "#666" }}>
@@ -2151,24 +2372,42 @@
                         </small>
                       )}
                     </div>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => {
-                        setSymptomForm({
-                          description: "",
-                          duration: "",
-                          severity: "",
-                          symptoms: [],
-                          additionalNotes: "",
-                        });
-                        setSymptomCompleted(false); // 清除時重置完成狀態
-                        setSymptomImageFile(null);
-                        setSymptomImageStatus("");
+                    {symptomCompleted && (
+                      <div style={{
+                        padding: "12px",
+                        borderRadius: "12px",
+                        background: "#fff7e0",
+                        border: "1px dashed #e7b86d",
+                        color: "#8a641f",
+                        marginBottom: "16px"
                       }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        提交症狀資訊
-                      </button>
+                        <strong>症狀資訊已提交</strong>
+                        <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                          您的症狀資訊已確認，無法再修改。如需變更，請聯繫客服。
+                        </p>
+                      </div>
+                    )}
+                    <div className="form-actions">
+                      {!symptomCompleted && (
+                        <>
+                          <button type="button" className="btn-secondary" onClick={() => {
+                            setSymptomForm({
+                              description: "",
+                              duration: "",
+                              severity: "",
+                              symptoms: [],
+                            });
+                            setSymptomCompleted(false); // 清除時重置完成狀態
+                            setSymptomImageFile(null);
+                            setSymptomImageStatus("");
+                          }}>
+                            清除
+                          </button>
+                          <button type="submit" className="btn-primary">
+                            提交症狀資訊
+                          </button>
+                        </>
+                      )}
                     </div>
                   </form>
                 )}

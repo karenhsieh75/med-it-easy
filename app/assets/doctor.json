@@ -1,0 +1,71 @@
+{
+  "1_brightness_pale": {
+    "feature": "brightness",
+    "condition": "< 40",
+    "explanation": "面色偏白，多屬氣血不足之象",
+    "advice": "於日常飲食中加入溫補食材，並維持規律作息以充盈氣血。"
+  },
+
+  "2_brightness_dark": {
+    "feature": "brightness",
+    "condition": "< 30",
+    "explanation": "面色偏暗，多與久勞、睡眠不足或脾腎虧虛相關",
+    "advice": "建議改善睡眠品質，並適度拍拍臉部促進循環，可使氣色回復。"
+  },
+
+  "3_redness_high": {
+    "feature": "redness",
+    "condition": "> 0.25",
+    "explanation": "面色偏赤，常見於心火偏旺或情緒起伏較大",
+    "advice": "減少辛辣刺激性飲食，以助平緩心火、調和氣血。"
+  },
+
+  "4_redness_low": {
+    "feature": "redness",
+    "condition": "< -0.15",
+    "explanation": "面部赤色不足，氣血推行稍弱，略見淡薄之象。",
+    "advice": "可增加輕度運動以活絡氣血，有助改善面部氣色。"
+  },
+
+  "5_yellow_tone_high": {
+    "feature": "yellow_bias",
+    "condition": "> 0.30",
+    "explanation": "面色偏黃，多與脾土運化相關，或因飲食失衡導致濕氣稍重。",
+    "advice": "可清淡飲食並減少過油食物，搭配適度運動，氣色自然明亮。"
+  },
+
+  "6_blue_green_tone": {
+    "feature": "cyan_bias",
+    "condition": "> 0.20",
+    "explanation": "面部略呈青色，常因寒凝、氣血不暢或精神緊張所致。",
+    "advice": "可做肩頸放鬆運動、溫熱敷或泡熱水澡，以助氣機舒展。"
+  },
+
+  "7_contrast_low": {
+    "feature": "contrast",
+    "condition": "< 0.18",
+    "explanation": "面部對比度不足，常見於氣血不充、精神疲憊或睡眠不足。",
+    "advice": "適度日照、規律運動與補水習慣，可逐步提升膚色立體感與精神度。"
+  },
+
+  "8_skin_dull": {
+    "feature": "saturation",
+    "condition": "< 0.12",
+    "explanation": "膚色失於光彩，多因血行欠佳或代謝偏慢，略見晦暗之象。",
+    "advice": "可按摩臉部淋巴、緩步運動並保持良好水分攝取，有助提升透亮度。"
+  },
+
+  "9_skin_flush_patchy": {
+    "feature": "red_patch_var",
+    "condition": "> 0.22",
+    "explanation": "面部紅色分佈不均，多由局部氣滯、局部血行偏旺所致。",
+    "advice": "可以溫和保養舒緩肌膚，避免猛烈搓揉或刺激，使膚色更趨和緩均衡。"
+  },
+
+  "10_overall_balance_good": {
+    "feature": "balance_score",
+    "condition": "> 0.0",
+    "explanation": "面色和潤，光澤適中，色澤均衡，為氣血調和、精神良好的表現。",
+    "advice": "可持續保持規律生活作息與均衡飲食，以維持目前良好狀態。"
+  }
+}

@@ -563,6 +563,93 @@
         border-color: #48b7ab;
         background: #e8f5f3;
       }
+      /*醫師介面與 AI 詳情樣式 */
+      
+      /* 醫師看診卡片 */
+      .appt-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .appt-card:hover {
+        transform: translateY(-2px);
+        border-color: #8bd2c5;
+      }
+      .appt-info h4 {
+        margin: 0 0 8px 0;
+        color: #2f362f;
+        font-size: 18px;
+      }
+      .appt-info p {
+        margin: 4px 0;
+        color: #666;
+        font-size: 14px;
+      }
+      .appt-tag {
+        display: inline-block;
+        background: #e8f5f3;
+        color: #1c5a4b;
+        padding: 4px 12px;
+        border-radius: 99px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-right: 8px;
+      }
+      
+      /* 空狀態 */
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+        background: #f9f9f9;
+        border-radius: 16px;
+        border: 2px dashed #ddd;
+      }
+      
+      /* 彈窗詳情列表 */
+      .details-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .details-item {
+        padding: 12px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        border: 1px solid #eee;
+      }
+      .details-item strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #1c5a4b;
+      }
+      
+      /* AI 預測結果樣式  */
+      .ai-prediction-box {
+        background: #f9f9f9;
+        border: 1px solid #d1d9e6;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 8px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #334e68;
+        font-weight: bold;
+        font-size: 16px;
+      }
+      
+      /* 修正 modal-card 讓它可以捲動 (覆蓋原本的) */
+      .modal-card {
+        max-height: 90vh; /* 限制高度 */
+        overflow-y: auto; /* 超出時顯示捲軸 */
+      }
     </style>
   </head>
   <body>
@@ -623,6 +710,14 @@
             "提供AI問診服務，讓使用者可以快速問診。",
         },
       ];
+      // 醫師的功能表設定
+      const doctorFeatureConfigs = [
+        {
+          id: "doc_schedule",
+          title: "看診列表",
+          description: "查看您即將到來的預約與病患資訊。",
+        },
+      ];
 
       function App() {
         // 從 localStorage 恢復當前功能頁面，避免頁面刷新時跳回服務介紹
@@ -659,6 +754,8 @@
            }
          });
          const [aiDraft, setAiDraft] = useState("");
+         // 對話是否已結束（用於控制是否可以繼續發送訊息）
+         const [chatEnded, setChatEnded] = useState(false);
          
          // 當對話更新時，同步到 localStorage
          useEffect(() => {
@@ -742,6 +839,76 @@
           return localStorage.getItem("currentAppointmentId") !== null;
         });
         const [symptomCompleted, setSymptomCompleted] = useState(false);
+        
+        // 醫師的預約列表
+        const [doctorAppointments, setDoctorAppointments] = useState([]);
+        
+        // 醫師查看詳情相關 State (控制彈窗)
+        const [selectedAppt, setSelectedAppt] = useState(null);
+        const [selectedApptAiRecord, setSelectedApptAiRecord] = useState(null);
+
+        // 強制登入檢查 (一進來就執行)
+        useEffect(() => {
+          if (!isLoggedIn) {
+            setLoginModalOpen(true);
+            // 如果原本是在內頁，強制踢回首頁
+            setActiveFeature(featureConfigs[0]); 
+          }
+        }, [isLoggedIn]);
+
+        // 撈取醫師預約的函式
+        const fetchDoctorAppointments = async () => {
+          if (!currentUser || currentUser.role !== "doctor") return;
+
+          try {
+            // 抓取所有預約
+            const response = await fetch(`${API_BASE_URL}/api/appointment/`);
+            if (response.ok) {
+              const allAppts = await response.json();
+              // 篩選出屬於目前登入醫師的預約
+              const myAppts = allAppts.filter(
+                (appt) => appt.doctor_id === currentUser.id
+              );
+              setDoctorAppointments(myAppts);
+            }
+          } catch (error) {
+            console.error("無法載入預約:", error);
+          }
+        };
+
+        // 點擊「查看詳情」時，撈取 AI 診斷紀錄
+        const handleViewDetails = async (appt) => {
+          setSelectedAppt(appt);
+          setSelectedApptAiRecord(null); // 先清空舊資料
+
+          try {
+            // 從後端撈取 MedicalRecord (這裡面包含 ai_disease_prediction)
+            const recordRes = await fetch(`${API_BASE_URL}/api/analysis/records`);
+            if (recordRes.ok) {
+              const records = await recordRes.json();
+              // 找到屬於這個預約的紀錄
+              const targetRecord = records.find((r) => r.appointment_id === appt.id);
+              if (targetRecord) {
+                setSelectedApptAiRecord(targetRecord);
+              }
+            }
+          } catch (e) {
+            console.error("撈取 AI 資料失敗:", e);
+          }
+        };
+
+        // 關閉詳情彈窗
+        const closeDetailsModal = () => {
+          setSelectedAppt(null);
+        };
+
+        // 當切換到醫師介面時，自動載入資料
+        useEffect(() => {
+          if (isLoggedIn && currentUser?.role === "doctor") {
+            setActiveFeature(doctorFeatureConfigs[0]);
+            fetchDoctorAppointments();
+          }
+        }, [isLoggedIn, currentUser]);
 
         // 載入醫師和科別列表（從後端 API）
         useEffect(() => {
@@ -1279,7 +1446,7 @@
 
             // 2. 將所有症狀資訊送到後端，存到 SymptomLog 表
             const symptomResponse = await fetch(
-              `${API_BASE_URL}/api/symptoms`,
+              `${API_BASE_URL}/api/symptoms/`,
               {
                 method: "POST",
                 headers: {
@@ -1363,7 +1530,11 @@
             <aside className="sidebar">
               <h1>功能表</h1>
               <div className="feature-list">
-                {featureConfigs.map((feature) => (
+                {/*根據角色顯示不同的選單 */}
+                {(currentUser?.role === "doctor"
+                  ? doctorFeatureConfigs
+                  : featureConfigs
+                ).map((feature) => (
                   <div
                     key={feature.id}
                     className={`feature-card ${
@@ -1375,6 +1546,7 @@
                   </div>
                 ))}
               </div>
+              {currentUser?.role !== "doctor" && (
 
               <div className="chat-box">
                 <label htmlFor="chat-input">快速訊息</label>
@@ -1388,6 +1560,7 @@
                   送出訊息
                 </button>
               </div>
+              )}
             </aside>
 
             {/* 漢堡選單 */}
@@ -1411,20 +1584,23 @@
                     }}>
                       {currentUser?.full_name || "已登入"}
                     </div>
-                    <div className="menu-item" onClick={() => {
-                      setCurrentUser(null);
-                      setIsLoggedIn(false);
-                      updateCurrentAppointmentId(null);
-                      setAppointmentCompleted(false);
-                      setSymptomCompleted(false);
-                      setConversation([]);
-                      setMenuOpen(false);
-                      // 清除 localStorage 中的登入資訊
-                      localStorage.removeItem("currentUser");
-                      localStorage.removeItem("isLoggedIn");
-                      localStorage.removeItem("currentAppointmentId");
-                      alert("已登出");
-                    }}>
+                    <div
+                      className="menu-item"
+                      onClick={() => {
+                        //強制登出並跳轉登入
+                        setCurrentUser(null);
+                        setIsLoggedIn(false);
+                        localStorage.clear(); // 清空所有資料
+                        updateCurrentAppointmentId(null);
+                        setAppointmentCompleted(false);
+                        setSymptomCompleted(false);
+                        setConversation([]);
+                        
+                        alert("已登出");
+                        setMenuOpen(false);
+                        setLoginModalOpen(true); //自動打開登入窗
+                      }}
+                    >
                       登出
                     </div>
                   </>
@@ -1616,10 +1792,127 @@
               </div>
             )}
 
+            {/*醫師查看詳情與 AI 診斷彈窗 */}
+            {selectedAppt && (
+              <div className="modal-backdrop" role="dialog" aria-modal="true">
+                <div className="modal-card">
+                  <button className="modal-close" onClick={closeDetailsModal}>
+                    ×
+                  </button>
+                  <h3>病患預約詳情</h3>
+                  <div className="details-list" style={{ marginTop: "20px" }}>
+                    <div className="details-item">
+                      <strong>預約編號：</strong> {selectedAppt.id}
+                    </div>
+                    <div className="details-item">
+                      <strong>病患編號：</strong> {selectedAppt.patient_id}
+                    </div>
+                    <div className="details-item">
+                      <strong>日期時間：</strong> {selectedAppt.date}{" "}
+                      {selectedAppt.time}
+                    </div>
+                    <div className="details-item">
+                      <strong>看診科別：</strong> {selectedAppt.department}
+                    </div>
+
+                    {/* ✅ AI 分析結果顯示區 (改樣式、只顯示疾病) */}
+                    <div
+                      className="details-item"
+                      style={{ border: "1px solid #ccc", background: "#fff" }} 
+                    >
+                      <strong style={{color: "#333"}}>AI 輔助診斷：</strong>
+                      {selectedApptAiRecord ? (
+                        <div className="ai-prediction-box">
+                          {/* 只顯示預測疾病，不顯示建議 */}
+                          {selectedApptAiRecord.ai_disease_prediction || "待觀察"}
+                        </div>
+                      ) : (
+                        <span style={{ color: "#888" }}>
+                          尚未進行 AI 問診或無資料。
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button onClick={closeDetailsModal} className="btn-primary">
+                      關閉
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <main className="content">
               <div className="content-card">
                 <h2>{activeFeature.title}</h2>
                 <p>{activeFeature.description}</p>
+
+                {/*醫師看診列表介面 */}
+                {activeFeature.id === "doc_schedule" && (
+                  <div className="doctor-dashboard">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <h3>
+                        待看診病患 ({doctorAppointments.length})
+                      </h3>
+                      <button
+                        onClick={fetchDoctorAppointments}
+                        className="btn-secondary"
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        重新整理
+                      </button>
+                    </div>
+
+                    {doctorAppointments.length === 0 ? (
+                      <div className="empty-state">
+                        <p>目前沒有預約資料</p>
+                      </div>
+                    ) : (
+                      <div className="appt-list">
+                        {doctorAppointments.map((appt) => (
+                          <div key={appt.id} className="appt-card">
+                            <div className="appt-info">
+                              <h4>
+                                <span className="appt-tag">
+                                  {appt.time}
+                                </span>
+                                病患編號: {appt.patient_id}
+                              </h4>
+                              <p>日期: {appt.date}</p>
+                              <p>科別: {appt.department}</p>
+                              {appt.reason && (
+                                <p>原因: {appt.reason}</p>
+                              )}
+                            </div>
+                            <div>
+                              {/* 點擊觸發詳情彈窗 */}
+                              <button
+                                onClick={() => handleViewDetails(appt)}
+                                className="btn-primary"
+                                style={{
+                                  fontSize: "14px",
+                                  padding: "8px 16px",
+                                }}
+                              >
+                                查看詳情
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 服務介紹 */}
                 {activeFeature.id === "service" && lastMessage && (
@@ -1954,39 +2247,100 @@
                                </div>
                              ))
                            )}
+                           {chatEnded && (
+                             <div className="ai-bubble bot" style={{
+                               background: "#fff7e0",
+                               border: "2px dashed #e7b86d",
+                               alignSelf: "center",
+                               maxWidth: "90%",
+                               textAlign: "center"
+                             }}>
+                               <strong style={{ color: "#8a641f" }}>對話已結束</strong>
+                               <p style={{ margin: "8px 0 0 0", color: "#666" }}>
+                                 您已結束本次問診對話，後續將由醫師進行診斷。
+                               </p>
+                             </div>
+                           )}
                          </div>
-                         <div className="ai-input" 
-                           onKeyDown={(e) => {
-                             // 防止整個 div 區域的 Enter 鍵觸發表單提交
-                             if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
-                               e.preventDefault();
-                             }
-                           }}
-                         >
-                           <textarea
-                             placeholder="描述症狀或提出問題..."
-                             value={aiDraft}
-                             onChange={(event) => setAiDraft(event.target.value)}
-                             onKeyDown={(event) => {
-                               // 按 Enter 鍵（不按 Shift）時送出訊息
-                               if (event.key === "Enter" && !event.shiftKey) {
-                                 event.preventDefault(); // 防止換行和表單提交
-                                 event.stopPropagation(); // 阻止事件冒泡
-                                 handleAiSend(event); // 送出訊息
+                         {!chatEnded ? (
+                           <div className="ai-input" 
+                             onKeyDown={(e) => {
+                               // 防止整個 div 區域的 Enter 鍵觸發表單提交
+                               if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+                                 e.preventDefault();
                                }
                              }}
-                           />
-                           <button 
-                             type="button" 
-                             onClick={(e) => {
-                               e.preventDefault(); // 防止任何預設行為
-                               e.stopPropagation(); // 阻止事件冒泡
-                               handleAiSend(e);
-                             }}
                            >
-                             送出
-                           </button>
-                         </div>
+                             <textarea
+                               placeholder="描述症狀或提出問題..."
+                               value={aiDraft}
+                               onChange={(event) => setAiDraft(event.target.value)}
+                               onKeyDown={(event) => {
+                                 // 按 Enter 鍵（不按 Shift）時送出訊息
+                                 if (event.key === "Enter" && !event.shiftKey) {
+                                   event.preventDefault(); // 防止換行和表單提交
+                                   event.stopPropagation(); // 阻止事件冒泡
+                                   handleAiSend(event); // 送出訊息
+                                 }
+                               }}
+                             />
+                             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                               <button 
+                                 type="button" 
+                                 onClick={(e) => {
+                                   e.preventDefault(); // 防止任何預設行為
+                                   e.stopPropagation(); // 阻止事件冒泡
+                                   handleAiSend(e);
+                                 }}
+                               >
+                                 送出
+                               </button>
+                               <button 
+                                 type="button"
+                                 onClick={(e) => {
+                                   e.preventDefault();
+                                   e.stopPropagation();
+                                   if (window.confirm("確定要結束對話嗎？結束後將無法繼續發送訊息。")) {
+                                     setChatEnded(true);
+                                   }
+                                 }}
+                                 style={{
+                                   padding: "8px 16px",
+                                   borderRadius: "12px",
+                                   border: "2px solid #c2c2c2",
+                                   background: "#fff",
+                                   color: "#666",
+                                   fontWeight: "bold",
+                                   cursor: "pointer",
+                                   transition: "all 0.2s ease",
+                                   fontSize: "13px"
+                                 }}
+                                 onMouseEnter={(e) => {
+                                   e.target.style.background = "#f5f5f5";
+                                   e.target.style.borderColor = "#999";
+                                 }}
+                                 onMouseLeave={(e) => {
+                                   e.target.style.background = "#fff";
+                                   e.target.style.borderColor = "#c2c2c2";
+                                 }}
+                               >
+                                 結束對話
+                               </button>
+                             </div>
+                           </div>
+                         ) : (
+                           <div style={{
+                             padding: "14px",
+                             borderRadius: "16px",
+                             background: "#f5f5f5",
+                             textAlign: "center",
+                             color: "#666"
+                           }}>
+                             <p style={{ margin: 0 }}>
+                               對話已結束，無法繼續發送訊息
+                             </p>
+                           </div>
+                         )}
                        </>
                      );
                    })()}
@@ -2002,3 +2356,6 @@
     </script>
   </body>
 </html>
+
+
+

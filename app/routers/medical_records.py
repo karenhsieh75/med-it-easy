@@ -33,6 +33,7 @@ class MedicalRecordPublic(MedicalRecordBase):
     id: int
     ai_summary: Optional[str]
     ai_disease_prediction: Optional[str]
+    ai_advice: Optional[str]
     doctor_diagnosis: Optional[str]
     prescription: Optional[str]
     created_at: datetime
@@ -50,11 +51,12 @@ def create_record(record_data: MedicalRecordCreate, session: Session = Depends(g
         raise HTTPException(status_code=404, detail="找不到 appointment")
 
     # 生成 AI summary 和 prediction
-    ai_summary, ai_disease_prediction = generate_ai_summary(record_data.appointment_id, session)
+    ai_summary, ai_disease_prediction, ai_advice = generate_ai_summary(record_data.appointment_id, session)
 
     db_record = MedicalRecord.model_validate(record_data)
     db_record.ai_summary = ai_summary
     db_record.ai_disease_prediction = ai_disease_prediction
+    db_record.ai_advice = ai_advice
 
     session.add(db_record)
     session.commit()

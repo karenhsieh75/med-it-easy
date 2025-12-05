@@ -59,20 +59,28 @@ def generate_ai_summary(appointment_id: int, session: Session) -> Tuple[str, str
 
             1. **summary** (病歷摘要):
             - 簡潔地總結患者的主要症狀、病史和重要資訊
-            - 約 100-200 字
+            - 約 100-150 字
             - 使用專業但易懂的醫療術語
+            - 不要包括非醫療問診相關內容
 
             2. **disease_prediction** (疾病推測):
             - 基於症狀和對話,推測最可能的疾病或診斷
             - 如果資訊不足,填寫「待觀察」或「需進一步檢查」
-            - 可以列出 1-3 個可能性,以可能性排序
+            - 可以列出 1-3 個可能性,以可能性排序,用「、」分隔
+
+            3. **advice** (建議):
+            - 提供患者在看診前的建議
+            - 約 100-150 字
+            - 不要建議患者吃什麼藥，請建議運動、作息、睡眠、飲食、心態相關內容
+            - 語氣請保持親切、像一位專業的護理師
 
             注意: 不需要任何 Markdown 標記,直接回傳 JSON 物件。
 
             格式範例:
             {
-            "summary": "患者主訴...",
+            "summary": "患者...",
             "disease_prediction": "初步推測為..."
+            "advice": "建議..."
             }
             """
 
@@ -97,15 +105,18 @@ def generate_ai_summary(appointment_id: int, session: Session) -> Tuple[str, str
                 ai_disease_prediction = result.get(
                     "disease_prediction", "待觀察"
                 )
-            except json.JSONDecodeError:
+                ai_advice = result.get("advice", "")
+            except json.JSONDecodeError as e:
                 # 解析失敗時使用預設值
+                print(f"[JSON 解析錯誤] {e}")
                 ai_summary = "AI 摘要生成失敗"
                 ai_disease_prediction = "待觀察"
-
+                ai_advice = "建議生成失敗"
     except Exception as e:
         # 如果 AI 生成失敗,不影響病歷建立,只記錄錯誤
         print(f"AI 生成失敗: {str(e)}")
         ai_summary = "AI 摘要生成失敗"
         ai_disease_prediction = "待觀察"
-
-    return ai_summary, ai_disease_prediction
+        ai_advice = "建議生成失敗"
+        
+    return ai_summary, ai_disease_prediction, ai_advice

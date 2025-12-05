@@ -8,7 +8,7 @@ import json
 
 from ..database import get_session
 from ..models import AnalysisRecord, User, UserRole
-from ..analysis.skin_tone import (
+from ..services.skin_tone import (
     analyze_face_color,
     generate_plot_base64,
     generate_rose_plot_base64,

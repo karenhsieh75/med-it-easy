@@ -1641,64 +1641,72 @@
         };
 
         //獲取 AI 小卡 (只抓取圖片)
-        // [修正版] 獲取 AI 小卡 (包含除錯訊息 & 失敗處理)
+        // [最終修正版] 獲取 AI 小卡
+        // 流程：1.抓症狀 -> 2.POST生成病歷(帶入症狀) -> 3.抓膚色圖片 -> 4.顯示圖片
         const fetchAiSummary = async () => {
-           console.log("🚀 開始執行 fetchAiSummary...");
-           
-           if (!currentUser || !currentAppointmentId) {
-               console.error("❌ 缺少使用者 ID 或 預約 ID");
-               return;
-           }
+           if (!currentUser || !currentAppointmentId) return;
 
            let skinToneImage = null;
 
            try {
-              // 1. 抓取膚色 API
-              const apiUrl = `${API_BASE_URL}/api/analysis/records?patient_id=${currentUser.id}&analysis_type=skin_tone`;
-              console.log("📡 正在請求 API:", apiUrl);
+              console.log(" 準備生成 AI 病歷...");
+
+              // --- 步驟 A: 先去抓取病患填寫的症狀 (確保資料是最新的) ---
+              let symptomString = "患者未填寫症狀";
               
-              const skinRes = await fetch(apiUrl);
-              console.log("📡 API 回應狀態:", skinRes.status);
-
-              if (skinRes.ok) {
-                 const skinData = await skinRes.json();
-                 console.log("📦 API 回傳資料:", skinData);
-
-                 // 檢查資料結構
-                 if (skinData && Array.isArray(skinData) && skinData.length > 0) {
-                    // 這裡非常關鍵：確認 analysis_result 和 analysis_plot_base64 存在
-                    const result = skinData[0].analysis_result;
-                    if (result && result.analysis_plot_base64) {
-                        skinToneImage = result.analysis_plot_base64;
-                        console.log("✅ 成功取得圖片 Base64 (長度):", skinToneImage.length);
-                    } else {
-                        console.warn("⚠️ 找到紀錄，但裡面沒有 analysis_plot_base64 欄位");
-                    }
-                 } else {
-                    console.warn("⚠️ API 回傳空陣列 []，表示還沒有分析紀錄");
-                 }
-              } else {
-                 console.error("❌ API 請求失敗");
+              const getSymptomRes = await fetch(`${API_BASE_URL}/api/symptoms/${currentAppointmentId}`);
+              if (getSymptomRes.ok) {
+                  const symData = await getSymptomRes.json();
+                  // 組合字串： "主訴：XXX。標籤：YYY, ZZZ"
+                  const desc = symData.description || "";
+                  const tags = symData.symptoms ? symData.symptoms.join(", ") : "";
+                  symptomString = `主訴：${desc}。症狀標籤：${tags}`;
+                  console.log("✅ 取得症狀資料:", symptomString);
               }
 
-              // 2. 建立訊息 (不管有沒有圖片，都先顯示一張卡片，避免畫面沒反應)
-              const summaryMessage = {
-                 role: "summary_card", 
-                 content: {
-                    // 如果有圖片就放圖片，沒圖片就給 null
-                    skinImage: skinToneImage 
-                 }
-              };
-              
-              // 更新對話視窗
-              setConversation(prev => {
-                  console.log("🔄 正在更新對話視窗，加入小卡...");
-                  return [...prev, summaryMessage];
+              // --- 步驟 B: 發送 POST 請求生成病歷 (將症狀帶入 symptoms 欄位) ---
+              const createRecordRes = await fetch(`${API_BASE_URL}/api/medical_record/`, {
+                  method: "POST",
+                  headers: {
+                      "Content-Type": "application/json",
+                      "accept": "application/json"
+                  },
+                  body: JSON.stringify({
+                      appointment_id: currentAppointmentId,
+                      symptoms: symptomString // <--- 這裡現在會傳入真實的症狀內容了！
+                  })
               });
 
+              if (createRecordRes.ok) {
+                  console.log("✅ AI 病歷已生成 (已包含症狀資訊)");
+              } else {
+                  console.error("❌ 生成病歷失敗", createRecordRes.status);
+              }
+
+              // --- 步驟 C: 抓取膚色 API (為了拿分析圖表) ---
+              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${currentUser.id}&analysis_type=skin_tone`);
+              if (skinRes.ok) {
+                 const skinData = await skinRes.json();
+                 if (skinData && skinData.length > 0) {
+                    skinToneImage = skinData[0].analysis_result?.analysis_plot_base64 || null;
+                 }
+              }
+
+              // --- 步驟 D: 更新畫面 (只顯示圖片) ---
+              if (skinToneImage) {
+                  const summaryMessage = {
+                     role: "summary_card", 
+                     content: {
+                        skinImage: skinToneImage
+                     }
+                  };
+                  setConversation(prev => [...prev, summaryMessage]);
+              } else {
+                  setConversation(prev => [...prev, { role: "assistant", content: "對話已結束。等待醫師看診。" }]);
+              }
+
            } catch (error) {
-              console.error("❌ 發生錯誤:", error);
-              alert("產生小卡時發生錯誤，請查看 Console");
+              console.error("執行失敗:", error);
            }
         };
 
@@ -2713,7 +2721,6 @@
     </script>
   </body>
 </html>
-
 
 
 

@@ -845,6 +845,8 @@
         // 醫師查看詳情相關 State (控制彈窗)
         const [selectedAppt, setSelectedAppt] = useState(null);
         const [selectedApptAiRecord, setSelectedApptAiRecord] = useState(null);
+        // 用來存膚色分析結果
+        const [selectedApptSkinTone, setSelectedApptSkinTone] = useState(null);
 
         // 強制登入檢查 (一進來就執行)
         useEffect(() => {
@@ -876,25 +878,38 @@
         };
 
         // 點擊「查看詳情」時，撈取 AI 診斷紀錄
-        const handleViewDetails = async (appt) => {
-          setSelectedAppt(appt);
-          setSelectedApptAiRecord(null); // 先清空舊資料
+          const handleViewDetails = async (appt) => {
+           setSelectedAppt(appt);
+           setSelectedApptAiRecord(null);   // 1. 用來存 Medical Record (含 AI 預測 & 摘要)
+           setSelectedApptSkinTone(null);   // 2. 用來存 膚色分析
 
-          try {
-            // 從後端撈取 MedicalRecord (這裡面包含 ai_disease_prediction)
-            const recordRes = await fetch(`${API_BASE_URL}/api/analysis/records`);
-            if (recordRes.ok) {
-              const records = await recordRes.json();
-              // 找到屬於這個預約的紀錄
-              const targetRecord = records.find((r) => r.appointment_id === appt.id);
-              if (targetRecord) {
-                setSelectedApptAiRecord(targetRecord);
+           try {
+              // --- 1. 抓取 Medical Record (AI 預測結果 & 摘要) ---
+              // API: GET /api/medical_record/appointment/{appointment_id}
+              const recordRes = await fetch(`${API_BASE_URL}/api/medical_record/appointment/${appt.id}`);
+              
+              if (recordRes.ok) {
+                 const recordData = await recordRes.json();
+                 setSelectedApptAiRecord(recordData);
+              } else {
+                 console.log("查無病歷資料 (可能是 AI 尚未生成或尚未看診)");
               }
-            }
-          } catch (e) {
-            console.error("撈取 AI 資料失敗:", e);
-          }
-        };
+
+              // --- 2. 抓取 膚色分析 (維持原樣，從 Analysis Records 找) ---
+              // API: GET /api/analysis/records?patient_id={patient_id}&analysis_type=skin_tone
+              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${appt.patient_id}&analysis_type=skin_tone`);
+              if (skinRes.ok) {
+                 const skinData = await skinRes.json();
+                 // 取最新一筆
+                 if (skinData && skinData.length > 0) {
+                    setSelectedApptSkinTone(skinData[0].analysis_result);
+                 }
+              }
+
+           } catch (e) { 
+               console.error("撈取詳情失敗:", e); 
+           }
+          };
 
         // 關閉詳情彈窗
         const closeDetailsModal = () => {
@@ -1535,7 +1550,7 @@
 
               // 呼叫後端膚色分析 API，會在資料庫建立 AnalysisRecord（skin_tone）
               const response = await fetch(
-                `${API_BASE_URL}/api/analysis/skin-tone`,
+                `${API_BASE_URL}/api/analysis/skin-tone?patient_id=${currentUser.id}`,
                 {
                   method: "POST",
                   body: formData,
@@ -1623,6 +1638,68 @@
             console.error("症狀提交或照片上傳發生錯誤:", error);
             alert("提交症狀或上傳照片時發生錯誤，請確認後端服務是否正常運行。");
           }
+        };
+
+        //獲取 AI 小卡 (只抓取圖片)
+        // [修正版] 獲取 AI 小卡 (包含除錯訊息 & 失敗處理)
+        const fetchAiSummary = async () => {
+           console.log("🚀 開始執行 fetchAiSummary...");
+           
+           if (!currentUser || !currentAppointmentId) {
+               console.error("❌ 缺少使用者 ID 或 預約 ID");
+               return;
+           }
+
+           let skinToneImage = null;
+
+           try {
+              // 1. 抓取膚色 API
+              const apiUrl = `${API_BASE_URL}/api/analysis/records?patient_id=${currentUser.id}&analysis_type=skin_tone`;
+              console.log("📡 正在請求 API:", apiUrl);
+              
+              const skinRes = await fetch(apiUrl);
+              console.log("📡 API 回應狀態:", skinRes.status);
+
+              if (skinRes.ok) {
+                 const skinData = await skinRes.json();
+                 console.log("📦 API 回傳資料:", skinData);
+
+                 // 檢查資料結構
+                 if (skinData && Array.isArray(skinData) && skinData.length > 0) {
+                    // 這裡非常關鍵：確認 analysis_result 和 analysis_plot_base64 存在
+                    const result = skinData[0].analysis_result;
+                    if (result && result.analysis_plot_base64) {
+                        skinToneImage = result.analysis_plot_base64;
+                        console.log("✅ 成功取得圖片 Base64 (長度):", skinToneImage.length);
+                    } else {
+                        console.warn("⚠️ 找到紀錄，但裡面沒有 analysis_plot_base64 欄位");
+                    }
+                 } else {
+                    console.warn("⚠️ API 回傳空陣列 []，表示還沒有分析紀錄");
+                 }
+              } else {
+                 console.error("❌ API 請求失敗");
+              }
+
+              // 2. 建立訊息 (不管有沒有圖片，都先顯示一張卡片，避免畫面沒反應)
+              const summaryMessage = {
+                 role: "summary_card", 
+                 content: {
+                    // 如果有圖片就放圖片，沒圖片就給 null
+                    skinImage: skinToneImage 
+                 }
+              };
+              
+              // 更新對話視窗
+              setConversation(prev => {
+                  console.log("🔄 正在更新對話視窗，加入小卡...");
+                  return [...prev, summaryMessage];
+              });
+
+           } catch (error) {
+              console.error("❌ 發生錯誤:", error);
+              alert("產生小卡時發生錯誤，請查看 Console");
+           }
         };
 
          // 處理症狀選項切換
@@ -1968,23 +2045,33 @@
                       <strong>看診科別：</strong> {selectedAppt.department}
                     </div>
 
-                    {/* ✅ AI 分析結果顯示區 (改樣式、只顯示疾病) */}
-                    <div
-                      className="details-item"
-                      style={{ border: "1px solid #ccc", background: "#fff" }} 
-                    >
-                      <strong style={{color: "#333"}}>AI 輔助診斷：</strong>
-                      {selectedApptAiRecord ? (
-                        <div className="ai-prediction-box">
-                          {/* 只顯示預測疾病，不顯示建議 */}
-                          {selectedApptAiRecord.ai_disease_prediction || "待觀察"}
-                        </div>
-                      ) : (
-                        <span style={{ color: "#888" }}>
-                          尚未進行 AI 問診或無資料。
-                        </span>
-                      )}
+                    {/* 區塊 1: AI 疾病預測 (從 medical_record 拿) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #8bd2c5" }}>
+                    <strong>AI 輔助診斷 (疾病預測)：</strong>
+                    <div className="ai-prediction-box" style={{fontWeight: "bold", color: "#2c5282"}}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_disease_prediction : "尚無資料"}
                     </div>
+                  </div>
+
+                  {/* 區塊 2: AI 摘要 (從 medical_record 拿 - 新增的部分) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #71d2c0" }}>
+                    <strong>AI 重點摘要：</strong>
+                    <div style={{marginTop:"8px", lineHeight: "1.6", color: "#444"}}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_summary : "尚無資料"}
+                    </div>
+                  </div>
+
+                  {/* 區塊 3: 膚色分析狀況 (維持原樣) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
+                    <strong>皮膚狀況分析：</strong>
+                    {selectedApptSkinTone ? (
+                        <div style={{marginTop:"8px"}}>
+                            <div>色調類型：<span style={{fontWeight:"bold", color:"#d97706"}}>{selectedApptSkinTone.best_match}</span></div>
+                        </div>
+                    ) : (
+                        <span style={{color:"#888"}}>無膚色資料</span>
+                    )}
+                  </div>
                   </div>
                   <div className="modal-actions">
                     <button onClick={closeDetailsModal} className="btn-primary">
@@ -2475,17 +2562,46 @@
                                歡迎使用 AI 問診示範介面，輸入訊息後可預覽未來模型的回覆流程。
                              </div>
                            ) : (
-                             conversation.map((message, index) => (
-                               <div
-                                 key={`${message.role}-${index}`}
-                                 className={`ai-bubble ${
-                                   message.role === "user" ? "user" : "bot"
-                                 }`}
-                               >
-                                 {message.content}
-                               </div>
-                             ))
-                           )}
+                             conversation.map((message, index) => {
+                              // [修正] 特殊卡片渲染邏輯
+                              if (message.role === "summary_card") {
+                                return (
+                                  <div key={`summary-${index}`} style={{
+                                    alignSelf: "center", width: "100%", maxWidth: "1000px", 
+                                    margin: "16px 0", borderRadius: "12px", overflow: "visible",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)", border: "4px solid #fff",
+                                    backgroundColor: "#f9f9f9"
+                                  }}>
+                                    {message.content.skinImage ? (
+                                        <img 
+                                          src={`data:image/png;base64,${message.content.skinImage}`} 
+                                          alt="AI 分析小卡"
+                                          style={{width: "100%", display: "block", height: "auto"}}
+                                        />
+                                    ) : (
+                                        // 這是新增的：如果沒圖片，會顯示這個，而不是消失
+                                        <div style={{padding:"40px 20px", textAlign:"center", color:"#666"}}>
+                                            <h3>⚠️ 無法顯示圖片</h3>
+                                            <p style={{fontSize:"14px"}}>
+                                                可能是後端尚未分析完成，或資料庫無紀錄。<br/>
+                                                (請按 F12 查看 Console 錯誤訊息)
+                                            </p>
+                                        </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              // [原本] 普通對話氣泡
+                              return (
+                                <div
+                                  key={`${message.role}-${index}`}
+                                  className={`ai-bubble ${message.role === "user" ? "user" : "bot"}`}
+                                >
+                                  {message.content}
+                                </div>
+                              );
+                            }))}
                            {chatEnded && (
                              <div className="ai-bubble bot" style={{
                                background: "#fff7e0",
@@ -2535,14 +2651,16 @@
                                  送出
                                </button>
                                <button 
-                                 type="button"
-                                 onClick={(e) => {
-                                   e.preventDefault();
-                                   e.stopPropagation();
-                                   if (window.confirm("確定要結束對話嗎？結束後將無法繼續發送訊息。")) {
-                                     setChatEnded(true);
-                                   }
-                                 }}
+                                  type="button"
+                                  // ... 其他樣式保持不變 ...
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (window.confirm("確定要結束對話嗎？將為您生成健康摘要小卡。")) {
+                                      setChatEnded(true);
+                                      fetchAiSummary(); //呼叫函式
+                                    }
+                                  }}
                                  style={{
                                    padding: "8px 16px",
                                    borderRadius: "12px",
@@ -2595,6 +2713,8 @@
     </script>
   </body>
 </html>
+
+
 
 
 

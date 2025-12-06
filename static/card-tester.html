@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小卡 API 測試頁</title>
+  <style>
+    :root { --bg:#f5f7fb; --card:#fff; --accent:#2563eb; --text:#1f2937; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "Noto Sans TC", system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); }
+    .page { max-width: 900px; margin: 32px auto; padding: 0 20px; display: grid; gap: 16px; }
+    .panel { background: var(--card); border-radius: 14px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.06); }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    label { display: block; margin-bottom: 8px; font-weight: 600; }
+    input[type="number"], input[type="text"], input[type="file"] {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #d5d9e2; font-size: 14px; margin-bottom: 12px;
+    }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 999px;
+      padding: 10px 16px; font-weight: 700; cursor: pointer; transition: transform .1s, opacity .2s;
+    }
+    button:hover { opacity: .9; transform: translateY(-1px); }
+    .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .status { font-size: 14px; padding: 10px 12px; border-radius: 10px; background: #eef2ff; color: #312e81; }
+    .result-json { white-space: pre-wrap; background: #0b1021; color: #e5e7eb; padding: 12px; border-radius: 12px; font-family: Consolas, Monaco, monospace; font-size: 13px; max-height: 320px; overflow: auto; }
+    .card-preview { display: flex; align-items: center; justify-content: center; min-height: 320px; border: 1px dashed #d5d9e2; border-radius: 12px; background: linear-gradient(135deg,#f1f5f9,#e2e8f0); position: relative; overflow: auto; }
+    .card-preview img { max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); border: 2px solid #475569; }
+    .debug-link { position: absolute; top: 8px; right: 8px; font-size: 12px; background: #0ea5e9; color: #fff; padding: 4px 8px; border-radius: 8px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="panel">
+      <h1>小卡 API 測試</h1>
+      <div class="row">
+        <div>
+          <label>API Base URL（含 http://...）</label>
+          <input id="api-base" type="text" placeholder="http://127.0.0.1:8000" value="http://127.0.0.1:8000" />
+        </div>
+        <div>
+          <label>patient_id（必填）</label>
+          <input id="patient-id" type="number" placeholder="1" value="5" />
+        </div>
+        <div>
+          <label>appointment_id（可留空）</label>
+          <input id="appointment-id" type="number" placeholder="不填則抓最新一筆" value="2" />
+        </div>
+      </div>
+      <label>上傳臉部照片 (jpg/jpeg/png)</label>
+      <input id="file-input" type="file" accept="image/*" />
+      <button id="submit-btn" type="button">送出分析</button>
+      <div id="status" class="status" style="margin-top:10px;">尚未送出</div>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0;">結果 JSON（已隱藏 base64）</h2>
+      <div id="result-json" class="result-json">等待回應...</div>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0;">小卡預覽</h2>
+      <div id="card-preview" class="card-preview">尚無圖片</div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $("status");
+    const resultEl = $("result-json");
+    const previewEl = $("card-preview");
+
+    const logStep = (msg, data) => {
+      console.log(msg, data || "");
+      statusEl.textContent = msg;
+    };
+
+    $("submit-btn").addEventListener("click", async () => {
+      const apiBase = $("api-base").value.trim().replace(/\/$/, "");
+      const patientId = $("patient-id").value.trim();
+      const appointmentId = $("appointment-id").value.trim();
+      const file = $("file-input").files[0];
+
+      if (!apiBase || !patientId || !file) {
+        alert("請填入 API、patient_id 並選擇圖片");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("patient_id", patientId);
+      if (appointmentId) formData.append("appointment_id", appointmentId);
+      formData.append("file", file);
+
+      logStep("送出中...");
+      resultEl.textContent = "等待回應...";
+
+      try {
+        const targetUrl = `${apiBase}/api/analysis/skin-tone`;
+        logStep("POST " + targetUrl);
+        const resp = await fetch(targetUrl, {
+          method: "POST",
+          body: formData,
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${txt}`);
+        }
+        const data = await resp.json();
+        console.log("API raw response", data);
+        logStep("成功，開始處理回傳資料");
+
+        // clone 一份並移除 base64 欄位，避免影響版面
+        const clone = JSON.parse(JSON.stringify(data));
+        if (clone?.analysis_result?.analysis_card_base64) {
+          clone.analysis_result.analysis_card_base64 = "[hidden]";
+        }
+        resultEl.textContent = JSON.stringify(clone, null, 2);
+
+        const cardB64 = data?.analysis_result?.analysis_card_base64;
+        logStep(`取得卡片 base64，長度=${cardB64 ? cardB64.length : 0}`);
+        if (cardB64) {
+          const cleanB64 = cardB64.replace(/\s+/g, "");
+          if (!cleanB64.startsWith("iVBORw")) {
+            console.warn("Base64 does not look like PNG header");
+          }
+          try {
+            const byteStr = atob(cleanB64);
+            const bytes = new Uint8Array(byteStr.length);
+            for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+            const blob = new Blob([bytes], { type: "image/png" });
+            const url = URL.createObjectURL(blob);
+
+            // 建立可點擊的新視窗連結
+            const link = document.createElement("a");
+            link.className = "debug-link";
+            link.href = url;
+            link.target = "_blank";
+            link.textContent = "開新視窗";
+
+            const img = new Image();
+            img.onload = () => {
+              logStep(`圖片載入成功，尺寸 ${img.naturalWidth}x${img.naturalHeight}`);
+              previewEl.innerHTML = "";
+              previewEl.appendChild(img);
+              previewEl.appendChild(link);
+            };
+            img.onerror = (e) => {
+              console.error("Image load error", e);
+              previewEl.innerHTML = "圖片載入失敗（可能 base64 被截斷或非 PNG）。";
+              previewEl.appendChild(link);
+              logStep("圖片載入失敗，詳見 console");
+            };
+            img.src = url;
+          } catch (e) {
+            console.error("Base64 decode error", e);
+            previewEl.innerHTML = "base64 解析失敗";
+            logStep("base64 解析失敗，詳見 console");
+          }
+        } else {
+          previewEl.innerHTML = "回傳內沒有 analysis_card_base64";
+          logStep("回傳內沒有 analysis_card_base64");
+        }
+      } catch (err) {
+        console.error("fetch error", err);
+        logStep("失敗");
+        resultEl.textContent = err.message;
+        previewEl.innerHTML = "錯誤";
+      }
+    });
+  </script>
+</body>
+</html>

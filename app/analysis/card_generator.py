@@ -24,9 +24,9 @@ class SkinToneCardGenerator:
     ROSE_BOX: BoxCoords = ((45, 128), (180, 257))
     DIAGNOSIS_BOX: BoxCoords = ((220, 170), (410, 260))
     APP_ID_BOX: BoxCoords = ((73, 337), (102, 371))
-    APP_DATE_BOX: BoxCoords = ((192, 328), (258, 380))
+    APP_DATE_BOX: BoxCoords = ((198, 328), (258, 380))
     APP_CATEGORY_BOX: BoxCoords = ((334, 328), (403, 378))
-    LLM_ADVICE_BOX: BoxCoords = ((97, 464), (401, 496))
+    LLM_ADVICE_BOX: BoxCoords = ((70, 464), (430, 496))
 
     def __init__(self, template_path: Path, font_path: Path | None = None) -> None:
         self.template_path = Path(template_path)
@@ -150,7 +150,7 @@ class SkinToneCardGenerator:
             draw,
             appointment_fields.get("app_date", "N/A"),
             self.APP_DATE_BOX,
-            font_size=14,
+            font_size=10,
         )
         self._draw_centered_text(
             draw,
@@ -163,7 +163,7 @@ class SkinToneCardGenerator:
             draw,
             llm_advice,
             self.LLM_ADVICE_BOX,
-            font_size=16,
+            font_size=12,
         )
 
         if output_path:

@@ -98,17 +98,24 @@ async def analyze_skin_tone(
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 僅保存狀態與規則結果，並附上小卡圖
-    analysis_result = {
+    # 回傳給前端的完整結果（含圖片）
+    analysis_result_response = {
         "status": analysis.get("status"),
         "result": result,
+        "appointment_context": appointment_fields,
         "analysis_card_base64": analysis_card_base64,
+    }
+    # 存 DB 的精簡版（不存 base64）
+    analysis_result_db = {
+        "status": analysis.get("status"),
+        "result": result,
+        "appointment_context": appointment_fields,
     }
 
     record = AnalysisRecord(
         patient_id=patient_id,
         analysis_type="skin_tone",
-        analysis_result=json.dumps(analysis_result),
+        analysis_result=json.dumps(analysis_result_db),
     )
     session.add(record)
     session.commit()
@@ -118,7 +125,7 @@ async def analyze_skin_tone(
         "id": record.id,
         "patient_id": record.patient_id,
         "analysis_type": record.analysis_type,
-        "analysis_result": analysis_result,
+        "analysis_result": analysis_result_response,
         "created_at": record.created_at.isoformat(),
     }
 

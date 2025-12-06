@@ -346,7 +346,7 @@
 
       .modal-card {
         width: 100%;
-        max-width: 420px;
+        max-width: 800px;
         background: #fffefd;
         border-radius: 24px;
         padding: 28px;
@@ -2069,12 +2069,31 @@
                     </div>
                   </div>
 
-                  {/* 區塊 3: 膚色分析狀況 (維持原樣) */}
+                  {/* 區塊 3: 膚色分析狀況 (修改：加上圖片顯示) */}
                   <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
-                    <strong>皮膚狀況分析：</strong>
+                    <strong>🎨 皮膚狀況分析：</strong>
                     {selectedApptSkinTone ? (
                         <div style={{marginTop:"8px"}}>
-                            <div>色調類型：<span style={{fontWeight:"bold", color:"#d97706"}}>{selectedApptSkinTone.best_match}</span></div>
+                            <div style={{marginBottom: "8px"}}>
+                                色調類型：<span style={{fontWeight:"bold", color:"#d97706"}}>{selectedApptSkinTone.best_match}</span>
+                            </div>
+                            
+                            {/* [新增] 顯示膚色分析圖片 (AI 小卡) */}
+                            {selectedApptSkinTone.analysis_plot_base64 && (
+                                <div style={{
+                                    marginTop: "10px", 
+                                    borderRadius: "8px", 
+                                    overflow: "visible", 
+                                    border: "1px solid #ddd",
+                                    maxWidth: "100%" // 限制寬度避免撐破彈窗
+                                }}>
+                                    <img 
+                                      src={`data:image/png;base64,${selectedApptSkinTone.analysis_plot_base64}`} 
+                                      alt="膚色分析圖表"
+                                      style={{width: "100%", display: "block", height: "auto"}}
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <span style={{color:"#888"}}>無膚色資料</span>

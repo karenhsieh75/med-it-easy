@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from ..analysis.card_generator import SkinToneCardGenerator
-from ..analysis.skin_tone import analyze_face_color
+from ..services.card_generator import SkinToneCardGenerator
+from ..services.skin_tone import analyze_face_color
 from ..database import get_session
 from ..models import AnalysisRecord, Appointment, User, UserRole
 

@@ -17,7 +17,6 @@ router = APIRouter(prefix="/api/medical_record", tags=["病歷與診斷"])
 # Base model
 class MedicalRecordBase(SQLModel):
     appointment_id: int
-    symptoms: Optional[str] = None
 
 
 class MedicalRecordCreate(MedicalRecordBase):

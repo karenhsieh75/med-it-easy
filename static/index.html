@@ -847,7 +847,8 @@
         const [selectedApptAiRecord, setSelectedApptAiRecord] = useState(null);
         // 用來存膚色分析結果
         const [selectedApptSkinTone, setSelectedApptSkinTone] = useState(null);
-
+        // [新增] 用來暫存剛才上傳分析後回傳的圖片 Base64
+      const [tempAiImage, setTempAiImage] = useState(null);
         // 強制登入檢查 (一進來就執行)
         useEffect(() => {
           if (!isLoggedIn) {
@@ -878,38 +879,47 @@
         };
 
         // 點擊「查看詳情」時，撈取 AI 診斷紀錄
-          const handleViewDetails = async (appt) => {
+        const handleViewDetails = async (appt) => {
            setSelectedAppt(appt);
-           setSelectedApptAiRecord(null);   // 1. 用來存 Medical Record (含 AI 預測 & 摘要)
+           setSelectedApptAiRecord(null);   // 1. 用來存 Medical Record
            setSelectedApptSkinTone(null);   // 2. 用來存 膚色分析
 
            try {
-              // --- 1. 抓取 Medical Record (AI 預測結果 & 摘要) ---
-              // API: GET /api/medical_record/appointment/{appointment_id}
-              const recordRes = await fetch(`${API_BASE_URL}/api/medical_record/appointment/${appt.id}`);
-              
-              if (recordRes.ok) {
+             // --- 1. 抓取 Medical Record ---
+             const recordRes = await fetch(`${API_BASE_URL}/api/medical_record/appointment/${appt.id}`);
+             if (recordRes.ok) {
                  const recordData = await recordRes.json();
                  setSelectedApptAiRecord(recordData);
-              } else {
-                 console.log("查無病歷資料 (可能是 AI 尚未生成或尚未看診)");
-              }
+             } else {
+                 console.log("查無病歷資料");
+             }
 
-              // --- 2. 抓取 膚色分析 (維持原樣，從 Analysis Records 找) ---
-              // API: GET /api/analysis/records?patient_id={patient_id}&analysis_type=skin_tone
-              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${appt.patient_id}&analysis_type=skin_tone`);
-              if (skinRes.ok) {
+             // --- 2. 抓取 膚色分析 (使用 patient_id 查詢列表) ---
+             const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${appt.patient_id}&analysis_type=skin_tone`);
+             
+             if (skinRes.ok) {
                  const skinData = await skinRes.json();
-                 // 取最新一筆
-                 if (skinData && skinData.length > 0) {
-                    setSelectedApptSkinTone(skinData[0].analysis_result);
+                 
+                 if (skinData && Array.isArray(skinData) && skinData.length > 0) {
+                   // [關鍵修正]：前端自動排序，確保 ID 最大的排在第一個 (最新的)
+                   // 這樣無論後端回傳順序為何，我們都一定抓到最新的
+                   const sortedData = skinData.sort((a, b) => b.id - a.id);
+                   const latestRecord = sortedData[0];
+                   
+                   // [關鍵修正]：根據您的 API 結構，資料在 analysis_result.result 裡面
+                   if (latestRecord.analysis_result && latestRecord.analysis_result.result) {
+                       setSelectedApptSkinTone(latestRecord.analysis_result.result);
+                   } else {
+                       // 防呆：如果結構不同，就存上一層
+                       setSelectedApptSkinTone(latestRecord.analysis_result);
+                   }
                  }
-              }
+             }
 
            } catch (e) { 
                console.error("撈取詳情失敗:", e); 
            }
-          };
+         };
 
         // 關閉詳情彈窗
         const closeDetailsModal = () => {
@@ -1548,9 +1558,9 @@
               formData.append("patient_id", currentUser.id);
               formData.append("file", symptomImageFile);
 
-              // 呼叫後端膚色分析 API，會在資料庫建立 AnalysisRecord（skin_tone）
+              // 呼叫後端膚色分析 API
               const response = await fetch(
-                `${API_BASE_URL}/api/analysis/skin-tone?patient_id=${currentUser.id}`,
+                `${API_BASE_URL}/api/analysis/skin-tone`, // 注意: 有些後端不需要 query params，直接 POST formData 即可
                 {
                   method: "POST",
                   body: formData,
@@ -1558,31 +1568,30 @@
               );
 
               if (!response.ok) {
-                let errorMessage = "膚色分析上傳失敗，請稍後再試。";
+                let errorMessage = "膚色分析上傳失敗";
                 try {
-                  const errorData = await response.json();
-                  // 處理可能的錯誤格式
-                  if (typeof errorData === "string") {
-                    errorMessage = errorData;
-                  } else if (errorData.detail) {
-                    errorMessage = errorData.detail;
-                  } else if (errorData.message) {
-                    errorMessage = errorData.message;
-                  } else if (Array.isArray(errorData)) {
-                    // FastAPI 驗證錯誤可能是陣列格式
-                    errorMessage = errorData.map(e => e.msg || JSON.stringify(e)).join(", ");
-                  }
-                } catch (e) {
-                  // 如果無法解析 JSON，使用狀態文字
-                  errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                }
+                    const errJson = await response.json();
+                    errorMessage = errJson.detail || JSON.stringify(errJson);
+                } catch(e) {}
                 alert(errorMessage);
                 return;
               }
 
-              setSymptomImageStatus("✅ 臉部照片已成功上傳並完成膚色分析。");
+              // [關鍵修改] 上傳成功後，直接取出回傳的圖片並暫存！
+              const data = await response.json();
+              console.log("上傳分析成功，回傳資料:", data);
+              
+              if (data && data.analysis_result) {
+                  // 優先抓小卡，沒有則抓圖表
+                  const b64 = data.analysis_result.analysis_card_base64 || data.analysis_result.analysis_plot_base64;
+                  if (b64) {
+                      setTempAiImage(b64.replace(/\s+/g, "")); // 存入 State
+                      console.log("✅ 已成功暫存 AI 圖片 (來自 POST 回傳)");
+                  }
+              }
+
+              setSymptomImageStatus("✅ 臉部照片已成功上傳並完成分析。");
             } else {
-              // 若沒有上傳照片，給予溫和提示但仍允許提交其他症狀資訊
               setSymptomImageStatus("未上傳臉部照片，AI 膚色分析將無法執行。");
             }
 
@@ -1641,74 +1650,45 @@
         };
 
         //獲取 AI 小卡 (只抓取圖片)
-        // [最終修正版] 獲取 AI 小卡
-        // 流程：1.抓症狀 -> 2.POST生成病歷(帶入症狀) -> 3.抓膚色圖片 -> 4.顯示圖片
-        const fetchAiSummary = async () => {
-           if (!currentUser || !currentAppointmentId) return;
+     // [最終極速版] 直接使用暫存的圖片，無需等待後端查詢
+      const fetchAiSummary = async () => {
+        if (!currentUser || !currentAppointmentId) return;
 
-           let skinToneImage = null;
+        try {
+          console.log("準備顯示 AI 小卡...");
 
-           try {
-              console.log(" 準備生成 AI 病歷...");
+          // 1. 為了保持資料完整性，還是要在背景觸發一下病歷生成 (紀錄文字對話)
+          // 但我們不需要等它完成，因為圖片我們已經有了
+          let symptomString = "患者未填寫症狀";
+          const desc = symptomForm.description || "";
+          const tags = symptomForm.symptoms ? symptomForm.symptoms.join(", ") : "";
+          if(desc || tags) symptomString = `主訴：${desc}。症狀標籤：${tags}`;
 
-              // --- 步驟 A: 先去抓取病患填寫的症狀 (確保資料是最新的) ---
-              let symptomString = "患者未填寫症狀";
-              
-              const getSymptomRes = await fetch(`${API_BASE_URL}/api/symptoms/${currentAppointmentId}`);
-              if (getSymptomRes.ok) {
-                  const symData = await getSymptomRes.json();
-                  // 組合字串： "主訴：XXX。標籤：YYY, ZZZ"
-                  const desc = symData.description || "";
-                  const tags = symData.symptoms ? symData.symptoms.join(", ") : "";
-                  symptomString = `主訴：${desc}。症狀標籤：${tags}`;
-                  console.log("✅ 取得症狀資料:", symptomString);
-              }
+          fetch(`${API_BASE_URL}/api/medical_record/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "accept": "application/json" },
+              body: JSON.stringify({
+                  appointment_id: currentAppointmentId,
+                  symptoms: symptomString 
+              })
+          }).catch(e => console.warn("背景生成病歷紀錄失敗(不影響顯示):", e));
 
-              // --- 步驟 B: 發送 POST 請求生成病歷 (將症狀帶入 symptoms 欄位) ---
-              const createRecordRes = await fetch(`${API_BASE_URL}/api/medical_record/`, {
-                  method: "POST",
-                  headers: {
-                      "Content-Type": "application/json",
-                      "accept": "application/json"
-                  },
-                  body: JSON.stringify({
-                      appointment_id: currentAppointmentId,
-                      symptoms: symptomString // <--- 這裡現在會傳入真實的症狀內容了！
-                  })
-              });
+          // 2. 直接顯示剛才 POST 存下來的圖片
+          if (tempAiImage) {
+              const summaryMessage = {
+                  role: "summary_card", 
+                  content: { skinImage: tempAiImage }
+              };
+              setConversation(prev => [...prev, summaryMessage]);
+              console.log("✅ 成功顯示暫存的 AI 圖片");
+          } else {
+              setConversation(prev => [...prev, { role: "assistant", content: "對話已結束。等待醫師看診 (未偵測到圖片，請確認上傳步驟是否成功)。" }]);
+          }
 
-              if (createRecordRes.ok) {
-                  console.log("✅ AI 病歷已生成 (已包含症狀資訊)");
-              } else {
-                  console.error("❌ 生成病歷失敗", createRecordRes.status);
-              }
-
-              // --- 步驟 C: 抓取膚色 API (為了拿分析圖表) ---
-              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${currentUser.id}&analysis_type=skin_tone`);
-              if (skinRes.ok) {
-                 const skinData = await skinRes.json();
-                 if (skinData && skinData.length > 0) {
-                    skinToneImage = skinData[0].analysis_result?.analysis_plot_base64 || null;
-                 }
-              }
-
-              // --- 步驟 D: 更新畫面 (只顯示圖片) ---
-              if (skinToneImage) {
-                  const summaryMessage = {
-                     role: "summary_card", 
-                     content: {
-                        skinImage: skinToneImage
-                     }
-                  };
-                  setConversation(prev => [...prev, summaryMessage]);
-              } else {
-                  setConversation(prev => [...prev, { role: "assistant", content: "對話已結束。等待醫師看診。" }]);
-              }
-
-           } catch (error) {
-              console.error("執行失敗:", error);
-           }
-        };
+        } catch (error) {
+          console.error("執行失敗:", error);
+        }
+      };
 
          // 處理症狀選項切換
          const toggleSymptom = (symptom) => {
@@ -2068,35 +2048,34 @@
                       {selectedApptAiRecord ? selectedApptAiRecord.ai_summary : "尚無資料"}
                     </div>
                   </div>
-
-                  {/* 區塊 3: 膚色分析狀況 (修改：加上圖片顯示) */}
+                  {/* 區塊 3: 膚色分析狀況 (醫師端：只顯示純文字診斷) */}
                   <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
-                    <strong>🎨 皮膚狀況分析：</strong>
+                    <strong>皮膚狀況分析：</strong>
                     {selectedApptSkinTone ? (
                         <div style={{marginTop:"8px"}}>
-                            <div style={{marginBottom: "8px"}}>
-                                色調類型：<span style={{fontWeight:"bold", color:"#d97706"}}>{selectedApptSkinTone.best_match}</span>
-                            </div>
-                            
-                            {/* [新增] 顯示膚色分析圖片 (AI 小卡) */}
-                            {selectedApptSkinTone.analysis_plot_base64 && (
-                                <div style={{
-                                    marginTop: "10px", 
-                                    borderRadius: "8px", 
-                                    overflow: "visible", 
-                                    border: "1px solid #ddd",
-                                    maxWidth: "100%" // 限制寬度避免撐破彈窗
-                                }}>
-                                    <img 
-                                      src={`data:image/png;base64,${selectedApptSkinTone.analysis_plot_base64}`} 
-                                      alt="膚色分析圖表"
-                                      style={{width: "100%", display: "block", height: "auto"}}
-                                    />
+                            {/* 解釋 (Explanation) */}
+                            {selectedApptSkinTone.explanation && (
+                                <div style={{fontSize: "14px", color: "#333", marginBottom: "8px", lineHeight: "1.5"}}>
+                                    <strong>分析：</strong>
+                                    {selectedApptSkinTone.explanation}
                                 </div>
+                            )}
+
+                            {/* 建議 (Advice) */}
+                            {selectedApptSkinTone.advice && (
+                                <div style={{fontSize: "14px", color: "#2c5282", backgroundColor: "#ebf8ff", padding: "8px", borderRadius: "6px", lineHeight: "1.5"}}>
+                                    <strong>建議：</strong>
+                                    {selectedApptSkinTone.advice}
+                                </div>
+                            )}
+                            
+                            {/* 如果沒有解釋也沒有建議，才顯示提示 */}
+                            {!selectedApptSkinTone.explanation && !selectedApptSkinTone.advice && (
+                                <div style={{color: "#888", fontSize: "13px"}}>尚無詳細文字分析</div>
                             )}
                         </div>
                     ) : (
-                        <span style={{color:"#888"}}>無膚色資料</span>
+                        <span style={{color:"#888"}}>無膚色資料 (請確認病患是否已上傳照片)</span>
                     )}
                   </div>
                   </div>
@@ -2740,6 +2719,7 @@
     </script>
   </body>
 </html>
+
 
 
 

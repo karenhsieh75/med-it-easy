@@ -4,11 +4,10 @@ from sqlmodel import Session, select
 import os
 import json
 from dotenv import load_dotenv
-import importlib.metadata as importlib_metadata 
 
 import google.generativeai as genai
 from ..database import get_session
-from ..models import ChatLog, Appointment, MedicalRecord
+from ..models import ChatLog, Appointment
 
 load_dotenv()
 
@@ -17,9 +16,11 @@ router = APIRouter(prefix="/api/ai", tags=["AI 問診"])
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel('gemini-2.0-flash')
 
+
 class ChatRequest(BaseModel):
     appointment_id: int
     message: str
+
 
 @router.post("/chat")
 async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_session)):
@@ -83,7 +84,7 @@ async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_sess
         # 6. 清理字串，移除 Markdown 封裝
         cleaned_text = ai_reply.strip()
         if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text.removeprefix("```json").lstrip()     
+            cleaned_text = cleaned_text.removeprefix("```json").lstrip()
         if cleaned_text.endswith("```"):
             cleaned_text = cleaned_text.removesuffix("```").rstrip()
 
@@ -102,27 +103,14 @@ async def chat_with_ai(request: ChatRequest, session: Session = Depends(get_sess
         ai_log = ChatLog(
             appointment_id=request.appointment_id,
             sender_role="ai",
-            content=ai_advice 
+            content=ai_advice
         )
         session.add(ai_log)
-
-        # 9. 更新 MedicalRecord
-        medical_record = session.exec(
-            select(MedicalRecord).where(MedicalRecord.appointment_id == request.appointment_id)
-        ).first()
-        
-        if not medical_record:
-            medical_record = MedicalRecord(appointment_id=request.appointment_id)
-            session.add(medical_record)
-        
-        medical_record.ai_disease_prediction = ai_disease
-        session.add(medical_record)
-        
         session.commit()
 
-        # 10. 回傳分開的資料
+        # 9. 回傳分開的資料
         return {
-            "disease": ai_disease, 
+            "disease": ai_disease,
             "advice": ai_advice
         }
 

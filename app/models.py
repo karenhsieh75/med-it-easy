@@ -121,9 +121,11 @@ class MedicalRecord(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     appointment_id: int = Field(sa_column=Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), unique=True))
     
+    
     # AI Generated Content (Helper)
     ai_summary: Optional[str] = Field(default=None, sa_type=Text)
     ai_disease_prediction: Optional[str] = Field(default=None, sa_type=Text)
+    ai_advice: Optional[str] = Field(default=None, sa_type=Text)
     
     # Doctor's Input (Final Decision)
     doctor_diagnosis: Optional[str] = Field(default=None, sa_type=Text)

@@ -346,7 +346,7 @@
 
       .modal-card {
         width: 100%;
-        max-width: 420px;
+        max-width: 800px;
         background: #fffefd;
         border-radius: 24px;
         padding: 28px;
@@ -563,6 +563,93 @@
         border-color: #48b7ab;
         background: #e8f5f3;
       }
+      /*醫師介面與 AI 詳情樣式 */
+      
+      /* 醫師看診卡片 */
+      .appt-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .appt-card:hover {
+        transform: translateY(-2px);
+        border-color: #8bd2c5;
+      }
+      .appt-info h4 {
+        margin: 0 0 8px 0;
+        color: #2f362f;
+        font-size: 18px;
+      }
+      .appt-info p {
+        margin: 4px 0;
+        color: #666;
+        font-size: 14px;
+      }
+      .appt-tag {
+        display: inline-block;
+        background: #e8f5f3;
+        color: #1c5a4b;
+        padding: 4px 12px;
+        border-radius: 99px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-right: 8px;
+      }
+      
+      /* 空狀態 */
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+        background: #f9f9f9;
+        border-radius: 16px;
+        border: 2px dashed #ddd;
+      }
+      
+      /* 彈窗詳情列表 */
+      .details-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .details-item {
+        padding: 12px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        border: 1px solid #eee;
+      }
+      .details-item strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #1c5a4b;
+      }
+      
+      /* AI 預測結果樣式  */
+      .ai-prediction-box {
+        background: #f9f9f9;
+        border: 1px solid #d1d9e6;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 8px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #334e68;
+        font-weight: bold;
+        font-size: 16px;
+      }
+      
+      /* 修正 modal-card 讓它可以捲動 (覆蓋原本的) */
+      .modal-card {
+        max-height: 90vh; /* 限制高度 */
+        overflow-y: auto; /* 超出時顯示捲軸 */
+      }
     </style>
   </head>
   <body>
@@ -623,6 +710,14 @@
             "提供AI問診服務，讓使用者可以快速問診。",
         },
       ];
+      // 醫師的功能表設定
+      const doctorFeatureConfigs = [
+        {
+          id: "doc_schedule",
+          title: "看診列表",
+          description: "查看您即將到來的預約與病患資訊。",
+        },
+      ];
 
       function App() {
         // 從 localStorage 恢復當前功能頁面，避免頁面刷新時跳回服務介紹
@@ -659,6 +754,8 @@
            }
          });
          const [aiDraft, setAiDraft] = useState("");
+         // 對話是否已結束（用於控制是否可以繼續發送訊息）
+         const [chatEnded, setChatEnded] = useState(false);
          
          // 當對話更新時，同步到 localStorage
          useEffect(() => {
@@ -730,7 +827,6 @@
           duration: "",
           severity: "",
           symptoms: [],
-          additionalNotes: "",
         });
         // 症狀照片上傳狀態（僅前端用來暫存檔案與顯示提示）
         const [symptomImageFile, setSymptomImageFile] = useState(null);
@@ -742,6 +838,91 @@
           return localStorage.getItem("currentAppointmentId") !== null;
         });
         const [symptomCompleted, setSymptomCompleted] = useState(false);
+        
+        // 醫師的預約列表
+        const [doctorAppointments, setDoctorAppointments] = useState([]);
+        
+        // 醫師查看詳情相關 State (控制彈窗)
+        const [selectedAppt, setSelectedAppt] = useState(null);
+        const [selectedApptAiRecord, setSelectedApptAiRecord] = useState(null);
+        // 用來存膚色分析結果
+        const [selectedApptSkinTone, setSelectedApptSkinTone] = useState(null);
+
+        // 強制登入檢查 (一進來就執行)
+        useEffect(() => {
+          if (!isLoggedIn) {
+            setLoginModalOpen(true);
+            // 如果原本是在內頁，強制踢回首頁
+            setActiveFeature(featureConfigs[0]); 
+          }
+        }, [isLoggedIn]);
+
+        // 撈取醫師預約的函式
+        const fetchDoctorAppointments = async () => {
+          if (!currentUser || currentUser.role !== "doctor") return;
+
+          try {
+            // 抓取所有預約
+            const response = await fetch(`${API_BASE_URL}/api/appointment/`);
+            if (response.ok) {
+              const allAppts = await response.json();
+              // 篩選出屬於目前登入醫師的預約
+              const myAppts = allAppts.filter(
+                (appt) => appt.doctor_id === currentUser.id
+              );
+              setDoctorAppointments(myAppts);
+            }
+          } catch (error) {
+            console.error("無法載入預約:", error);
+          }
+        };
+
+        // 點擊「查看詳情」時，撈取 AI 診斷紀錄
+          const handleViewDetails = async (appt) => {
+           setSelectedAppt(appt);
+           setSelectedApptAiRecord(null);   // 1. 用來存 Medical Record (含 AI 預測 & 摘要)
+           setSelectedApptSkinTone(null);   // 2. 用來存 膚色分析
+
+           try {
+              // --- 1. 抓取 Medical Record (AI 預測結果 & 摘要) ---
+              // API: GET /api/medical_record/appointment/{appointment_id}
+              const recordRes = await fetch(`${API_BASE_URL}/api/medical_record/appointment/${appt.id}`);
+              
+              if (recordRes.ok) {
+                 const recordData = await recordRes.json();
+                 setSelectedApptAiRecord(recordData);
+              } else {
+                 console.log("查無病歷資料 (可能是 AI 尚未生成或尚未看診)");
+              }
+
+              // --- 2. 抓取 膚色分析 (維持原樣，從 Analysis Records 找) ---
+              // API: GET /api/analysis/records?patient_id={patient_id}&analysis_type=skin_tone
+              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${appt.patient_id}&analysis_type=skin_tone`);
+              if (skinRes.ok) {
+                 const skinData = await skinRes.json();
+                 // 取最新一筆
+                 if (skinData && skinData.length > 0) {
+                    setSelectedApptSkinTone(skinData[0].analysis_result);
+                 }
+              }
+
+           } catch (e) { 
+               console.error("撈取詳情失敗:", e); 
+           }
+          };
+
+        // 關閉詳情彈窗
+        const closeDetailsModal = () => {
+          setSelectedAppt(null);
+        };
+
+        // 當切換到醫師介面時，自動載入資料
+        useEffect(() => {
+          if (isLoggedIn && currentUser?.role === "doctor") {
+            setActiveFeature(doctorFeatureConfigs[0]);
+            fetchDoctorAppointments();
+          }
+        }, [isLoggedIn, currentUser]);
 
         // 載入醫師和科別列表（從後端 API）
         useEffect(() => {
@@ -767,6 +948,35 @@
 
           loadDoctorsAndDepartments();
         }, []);
+
+        // 如果有預約 ID，從後端載入預約資料（用於顯示已完成的預約）
+        useEffect(() => {
+          const loadAppointmentData = async () => {
+            if (!currentAppointmentId || !appointmentCompleted) return;
+            if (doctors.length === 0) return; // 等待醫師列表載入完成
+
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/appointment/${currentAppointmentId}`);
+              if (response.ok) {
+                const appointmentData = await response.json();
+                // 找到對應的醫師資訊
+                const selectedDoctor = doctors.find(d => d.id === appointmentData.doctor_id);
+                setAppointmentForm({
+                  date: appointmentData.date,
+                  time: appointmentData.time,
+                  doctor: selectedDoctor ? selectedDoctor.full_name : "",
+                  doctorId: appointmentData.doctor_id.toString(),
+                  department: appointmentData.department,
+                  reason: appointmentForm.reason, // 保留現有的原因（如果有的話）
+                });
+              }
+            } catch (error) {
+              console.error("載入預約資料失敗:", error);
+            }
+          };
+
+          loadAppointmentData();
+        }, [currentAppointmentId, appointmentCompleted, doctors]);
 
         // 在左側浮動視窗內更新選擇狀態與輸入訊息
         const selectFeature = (feature) => {
@@ -1126,12 +1336,71 @@
              document.addEventListener("mousedown", handleClickOutside);
            }
 
-           return () => {
-             document.removeEventListener("mousedown", handleClickOutside);
-           };
-         }, [menuOpen]);
+          return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+          };
+        }, [menuOpen]);
 
-         // 處理預約表單提交（連接到後端 API）
+        // 檢查是否已有症狀資料（當切換到症狀頁面或載入時）
+        useEffect(() => {
+          const checkExistingSymptom = async () => {
+            // 只有在登入且有預約 ID 時才檢查
+            if (!isLoggedIn || !currentAppointmentId) {
+              const savedAppointmentId = localStorage.getItem("currentAppointmentId");
+              if (!savedAppointmentId) {
+                setSymptomCompleted(false);
+                return;
+              }
+              // 如果有保存的預約 ID，使用它
+              const appointmentId = parseInt(savedAppointmentId);
+              try {
+                const response = await fetch(`${API_BASE_URL}/api/symptoms/${appointmentId}`);
+                if (response.ok) {
+                  const symptomData = await response.json();
+                  setSymptomForm({
+                    description: symptomData.description,
+                    duration: symptomData.duration,
+                    severity: symptomData.severity,
+                    symptoms: symptomData.symptoms || [],
+                  });
+                  setSymptomCompleted(true);
+                } else {
+                  setSymptomCompleted(false);
+                }
+              } catch (error) {
+                console.error("檢查症狀資料失敗:", error);
+                setSymptomCompleted(false);
+              }
+              return;
+            }
+
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/symptoms/${currentAppointmentId}`);
+              if (response.ok) {
+                const symptomData = await response.json();
+                setSymptomForm({
+                  description: symptomData.description,
+                  duration: symptomData.duration,
+                  severity: symptomData.severity,
+                  symptoms: symptomData.symptoms || [],
+                });
+                setSymptomCompleted(true);
+              } else {
+                setSymptomCompleted(false);
+              }
+            } catch (error) {
+              console.error("檢查症狀資料失敗:", error);
+              setSymptomCompleted(false);
+            }
+          };
+
+          // 當切換到症狀頁面時檢查
+          if (activeFeature.id === "symptom" && isLoggedIn) {
+            checkExistingSymptom();
+          }
+        }, [activeFeature.id, isLoggedIn, currentAppointmentId]);
+
+        // 處理預約表單提交（連接到後端 API）
          const handleAppointmentSubmit = async (e) => {
            e.preventDefault();
            
@@ -1169,15 +1438,49 @@
                // 預約成功，儲存預約 ID 供後續 AI 問診使用（同時更新 localStorage）
                updateCurrentAppointmentId(data.id);
                setAppointmentCompleted(true); // 同時更新狀態，讓 UI 立即反映
+               
+               // 從後端獲取完整的預約資料（包含醫師名稱等）
+               try {
+                 const appointmentDetailResponse = await fetch(`${API_BASE_URL}/api/appointment/${data.id}`);
+                 if (appointmentDetailResponse.ok) {
+                   const appointmentDetail = await appointmentDetailResponse.json();
+                   // 找到對應的醫師資訊
+                   const selectedDoctor = doctors.find(d => d.id === appointmentDetail.doctor_id);
+                   setAppointmentForm({
+                     date: appointmentDetail.date,
+                     time: appointmentDetail.time,
+                     doctor: selectedDoctor ? selectedDoctor.full_name : "",
+                     doctorId: appointmentDetail.doctor_id.toString(),
+                     department: appointmentDetail.department,
+                     reason: appointmentForm.reason, // 保留用戶輸入的原因（如果有的話）
+                   });
+                 } else {
+                   // 如果獲取失敗，使用當前表單資料
+                   setAppointmentForm({
+                     date: appointmentForm.date,
+                     time: appointmentForm.time,
+                     doctor: appointmentForm.doctor,
+                     doctorId: appointmentForm.doctorId,
+                     department: appointmentForm.department,
+                     reason: appointmentForm.reason,
+                   });
+                 }
+               } catch (error) {
+                 // 如果獲取失敗，使用當前表單資料
+                 console.error("獲取預約詳情失敗:", error);
+                 setAppointmentForm({
+                   date: appointmentForm.date,
+                   time: appointmentForm.time,
+                   doctor: appointmentForm.doctor,
+                   doctorId: appointmentForm.doctorId,
+                   department: appointmentForm.department,
+                   reason: appointmentForm.reason,
+                 });
+               }
+               
                alert(`預約成功！預約編號：${data.id}`);
-               setAppointmentForm({
-                 date: "",
-                 time: "",
-                 doctor: "",
-                 doctorId: "",
-                 department: "",
-                 reason: "",
-               });
+               // 自動跳轉到填寫症狀頁面
+               setActiveFeature(featureConfigs.find(f => f.id === "symptom"));
              } else {
                alert(data.detail || "預約失敗，請檢查輸入資訊。");
              }
@@ -1190,6 +1493,12 @@
         // 處理症狀表單提交（若有上傳照片則一併呼叫膚色分析 API，並將所有症狀資訊送到後端）
         const handleSymptomSubmit = async (e) => {
           e.preventDefault();
+
+          // 如果症狀已提交，阻止再次提交
+          if (symptomCompleted) {
+            alert("症狀資訊已提交，無法再次修改。");
+            return;
+          }
 
           // 若使用者尚未登入，無法辨識 patient_id，因此阻擋並提示
           if (!isLoggedIn || !currentUser) {
@@ -1241,7 +1550,7 @@
 
               // 呼叫後端膚色分析 API，會在資料庫建立 AnalysisRecord（skin_tone）
               const response = await fetch(
-                `${API_BASE_URL}/api/analysis/skin-tone`,
+                `${API_BASE_URL}/api/analysis/skin-tone?patient_id=${currentUser.id}`,
                 {
                   method: "POST",
                   body: formData,
@@ -1279,7 +1588,7 @@
 
             // 2. 將所有症狀資訊送到後端，存到 SymptomLog 表
             const symptomResponse = await fetch(
-              `${API_BASE_URL}/api/symptoms`,
+              `${API_BASE_URL}/api/symptoms/`,
               {
                 method: "POST",
                 headers: {
@@ -1291,7 +1600,7 @@
                   duration: symptomForm.duration,
                   severity: symptomForm.severity,
                   symptoms: symptomForm.symptoms, // 複選症狀陣列
-                  notes: symptomForm.additionalNotes || "",
+                  notes: "", // 已移除其他補充說明欄位
                 }),
               }
             );
@@ -1316,20 +1625,89 @@
             alert("✅ 症狀資訊已成功提交！");
             setSymptomCompleted(true); // 標記症狀表單已完成
             
-            // 清空表單
+            // 從後端獲取完整的症狀資料並填充到表單中（保持顯示已提交的資料）
             setSymptomForm({
-              description: "",
-              duration: "",
-              severity: "",
-              symptoms: [],
-              additionalNotes: "",
+              description: symptomResult.description,
+              duration: symptomResult.duration,
+              severity: symptomResult.severity,
+              symptoms: symptomResult.symptoms || [],
             });
-            setSymptomImageFile(null);
-            setSymptomImageStatus("");
+            // 保留圖片上傳狀態（如果有的話）
+            // setSymptomImageFile 和 setSymptomImageStatus 保持不變
           } catch (error) {
             console.error("症狀提交或照片上傳發生錯誤:", error);
             alert("提交症狀或上傳照片時發生錯誤，請確認後端服務是否正常運行。");
           }
+        };
+
+        //獲取 AI 小卡 (只抓取圖片)
+        // [最終修正版] 獲取 AI 小卡
+        // 流程：1.抓症狀 -> 2.POST生成病歷(帶入症狀) -> 3.抓膚色圖片 -> 4.顯示圖片
+        const fetchAiSummary = async () => {
+           if (!currentUser || !currentAppointmentId) return;
+
+           let skinToneImage = null;
+
+           try {
+              console.log(" 準備生成 AI 病歷...");
+
+              // --- 步驟 A: 先去抓取病患填寫的症狀 (確保資料是最新的) ---
+              let symptomString = "患者未填寫症狀";
+              
+              const getSymptomRes = await fetch(`${API_BASE_URL}/api/symptoms/${currentAppointmentId}`);
+              if (getSymptomRes.ok) {
+                  const symData = await getSymptomRes.json();
+                  // 組合字串： "主訴：XXX。標籤：YYY, ZZZ"
+                  const desc = symData.description || "";
+                  const tags = symData.symptoms ? symData.symptoms.join(", ") : "";
+                  symptomString = `主訴：${desc}。症狀標籤：${tags}`;
+                  console.log("✅ 取得症狀資料:", symptomString);
+              }
+
+              // --- 步驟 B: 發送 POST 請求生成病歷 (將症狀帶入 symptoms 欄位) ---
+              const createRecordRes = await fetch(`${API_BASE_URL}/api/medical_record/`, {
+                  method: "POST",
+                  headers: {
+                      "Content-Type": "application/json",
+                      "accept": "application/json"
+                  },
+                  body: JSON.stringify({
+                      appointment_id: currentAppointmentId,
+                      symptoms: symptomString // <--- 這裡現在會傳入真實的症狀內容了！
+                  })
+              });
+
+              if (createRecordRes.ok) {
+                  console.log("✅ AI 病歷已生成 (已包含症狀資訊)");
+              } else {
+                  console.error("❌ 生成病歷失敗", createRecordRes.status);
+              }
+
+              // --- 步驟 C: 抓取膚色 API (為了拿分析圖表) ---
+              const skinRes = await fetch(`${API_BASE_URL}/api/analysis/records?patient_id=${currentUser.id}&analysis_type=skin_tone`);
+              if (skinRes.ok) {
+                 const skinData = await skinRes.json();
+                 if (skinData && skinData.length > 0) {
+                    skinToneImage = skinData[0].analysis_result?.analysis_plot_base64 || null;
+                 }
+              }
+
+              // --- 步驟 D: 更新畫面 (只顯示圖片) ---
+              if (skinToneImage) {
+                  const summaryMessage = {
+                     role: "summary_card", 
+                     content: {
+                        skinImage: skinToneImage
+                     }
+                  };
+                  setConversation(prev => [...prev, summaryMessage]);
+              } else {
+                  setConversation(prev => [...prev, { role: "assistant", content: "對話已結束。等待醫師看診。" }]);
+              }
+
+           } catch (error) {
+              console.error("執行失敗:", error);
+           }
         };
 
          // 處理症狀選項切換
@@ -1363,7 +1741,11 @@
             <aside className="sidebar">
               <h1>功能表</h1>
               <div className="feature-list">
-                {featureConfigs.map((feature) => (
+                {/*根據角色顯示不同的選單 */}
+                {(currentUser?.role === "doctor"
+                  ? doctorFeatureConfigs
+                  : featureConfigs
+                ).map((feature) => (
                   <div
                     key={feature.id}
                     className={`feature-card ${
@@ -1375,19 +1757,48 @@
                   </div>
                 ))}
               </div>
+              {currentUser?.role !== "doctor" && (
 
               <div className="chat-box">
-                <label htmlFor="chat-input">快速訊息</label>
-                <textarea
-                  id="chat-input"
-                  placeholder="輸入想詢問的內容..."
-                  value={draftMessage}
-                  onChange={(event) => setDraftMessage(event.target.value)}
-                />
-                <button type="button" onClick={handleSend}>
-                  送出訊息
-                </button>
+                <div style={{
+                  width: "100%",
+                  height: "120px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "12px",
+                  border: "1px solid #1a3a5c",
+                  background: "#1a3a5c",
+                  overflow: "hidden",
+                  position: "relative"
+                }}>
+                  <img 
+                    src="/static/logo.png" 
+                    alt="Logo" 
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      width: "auto",
+                      height: "auto",
+                      objectFit: "contain",
+                      padding: "10px"
+                    }}
+                    onError={(e) => {
+                      // 如果圖片載入失敗，顯示提示文字
+                      e.target.style.display = "none";
+                      const parent = e.target.parentNode;
+                      if (!parent.querySelector('.logo-placeholder')) {
+                        const placeholder = document.createElement("div");
+                        placeholder.className = "logo-placeholder";
+                        placeholder.textContent = "請將 logo 圖片放置於 static/logo.png";
+                        placeholder.style.cssText = "color: #fff; font-size: 12px; text-align: center; padding: 20px; position: absolute;";
+                        parent.appendChild(placeholder);
+                      }
+                    }}
+                  />
+                </div>
               </div>
+              )}
             </aside>
 
             {/* 漢堡選單 */}
@@ -1411,20 +1822,23 @@
                     }}>
                       {currentUser?.full_name || "已登入"}
                     </div>
-                    <div className="menu-item" onClick={() => {
-                      setCurrentUser(null);
-                      setIsLoggedIn(false);
-                      updateCurrentAppointmentId(null);
-                      setAppointmentCompleted(false);
-                      setSymptomCompleted(false);
-                      setConversation([]);
-                      setMenuOpen(false);
-                      // 清除 localStorage 中的登入資訊
-                      localStorage.removeItem("currentUser");
-                      localStorage.removeItem("isLoggedIn");
-                      localStorage.removeItem("currentAppointmentId");
-                      alert("已登出");
-                    }}>
+                    <div
+                      className="menu-item"
+                      onClick={() => {
+                        //強制登出並跳轉登入
+                        setCurrentUser(null);
+                        setIsLoggedIn(false);
+                        localStorage.clear(); // 清空所有資料
+                        updateCurrentAppointmentId(null);
+                        setAppointmentCompleted(false);
+                        setSymptomCompleted(false);
+                        setConversation([]);
+                        
+                        alert("已登出");
+                        setMenuOpen(false);
+                        setLoginModalOpen(true); //自動打開登入窗
+                      }}
+                    >
                       登出
                     </div>
                   </>
@@ -1616,10 +2030,156 @@
               </div>
             )}
 
+            {/*醫師查看詳情與 AI 診斷彈窗 */}
+            {selectedAppt && (
+              <div className="modal-backdrop" role="dialog" aria-modal="true">
+                <div className="modal-card">
+                  <button className="modal-close" onClick={closeDetailsModal}>
+                    ×
+                  </button>
+                  <h3>病患預約詳情</h3>
+                  <div className="details-list" style={{ marginTop: "20px" }}>
+                    <div className="details-item">
+                      <strong>預約編號：</strong> {selectedAppt.id}
+                    </div>
+                    <div className="details-item">
+                      <strong>病患編號：</strong> {selectedAppt.patient_id}
+                    </div>
+                    <div className="details-item">
+                      <strong>日期時間：</strong> {selectedAppt.date}{" "}
+                      {selectedAppt.time}
+                    </div>
+                    <div className="details-item">
+                      <strong>看診科別：</strong> {selectedAppt.department}
+                    </div>
+
+                    {/* 區塊 1: AI 疾病預測 (從 medical_record 拿) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #8bd2c5" }}>
+                    <strong>AI 輔助診斷 (疾病預測)：</strong>
+                    <div className="ai-prediction-box" style={{fontWeight: "bold", color: "#2c5282"}}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_disease_prediction : "尚無資料"}
+                    </div>
+                  </div>
+
+                  {/* 區塊 2: AI 摘要 (從 medical_record 拿 - 新增的部分) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #71d2c0" }}>
+                    <strong>AI 重點摘要：</strong>
+                    <div style={{marginTop:"8px", lineHeight: "1.6", color: "#444"}}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_summary : "尚無資料"}
+                    </div>
+                  </div>
+
+                  {/* 區塊 3: 膚色分析狀況 (修改：加上圖片顯示) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
+                    <strong>🎨 皮膚狀況分析：</strong>
+                    {selectedApptSkinTone ? (
+                        <div style={{marginTop:"8px"}}>
+                            <div style={{marginBottom: "8px"}}>
+                                色調類型：<span style={{fontWeight:"bold", color:"#d97706"}}>{selectedApptSkinTone.best_match}</span>
+                            </div>
+                            
+                            {/* [新增] 顯示膚色分析圖片 (AI 小卡) */}
+                            {selectedApptSkinTone.analysis_plot_base64 && (
+                                <div style={{
+                                    marginTop: "10px", 
+                                    borderRadius: "8px", 
+                                    overflow: "visible", 
+                                    border: "1px solid #ddd",
+                                    maxWidth: "100%" // 限制寬度避免撐破彈窗
+                                }}>
+                                    <img 
+                                      src={`data:image/png;base64,${selectedApptSkinTone.analysis_plot_base64}`} 
+                                      alt="膚色分析圖表"
+                                      style={{width: "100%", display: "block", height: "auto"}}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <span style={{color:"#888"}}>無膚色資料</span>
+                    )}
+                  </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button onClick={closeDetailsModal} className="btn-primary">
+                      關閉
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <main className="content">
               <div className="content-card">
                 <h2>{activeFeature.title}</h2>
                 <p>{activeFeature.description}</p>
+
+                {/*醫師看診列表介面 */}
+                {activeFeature.id === "doc_schedule" && (
+                  <div className="doctor-dashboard">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <h3>
+                        待看診病患 ({doctorAppointments.length})
+                      </h3>
+                      <button
+                        onClick={fetchDoctorAppointments}
+                        className="btn-secondary"
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        重新整理
+                      </button>
+                    </div>
+
+                    {doctorAppointments.length === 0 ? (
+                      <div className="empty-state">
+                        <p>目前沒有預約資料</p>
+                      </div>
+                    ) : (
+                      <div className="appt-list">
+                        {doctorAppointments.map((appt) => (
+                          <div key={appt.id} className="appt-card">
+                            <div className="appt-info">
+                              <h4>
+                                <span className="appt-tag">
+                                  {appt.time}
+                                </span>
+                                病患編號: {appt.patient_id}
+                              </h4>
+                              <p>日期: {appt.date}</p>
+                              <p>科別: {appt.department}</p>
+                              {appt.reason && (
+                                <p>原因: {appt.reason}</p>
+                              )}
+                            </div>
+                            <div>
+                              {/* 點擊觸發詳情彈窗 */}
+                              <button
+                                onClick={() => handleViewDetails(appt)}
+                                className="btn-primary"
+                                style={{
+                                  fontSize: "14px",
+                                  padding: "8px 16px",
+                                }}
+                              >
+                                查看詳情
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 服務介紹 */}
                 {activeFeature.id === "service" && lastMessage && (
@@ -1641,7 +2201,14 @@
                         onChange={(e) =>
                           setAppointmentForm({ ...appointmentForm, date: e.target.value })
                         }
+                        min={new Date().toISOString().split('T')[0]}
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
                     <div className="form-group">
@@ -1653,6 +2220,12 @@
                           setAppointmentForm({ ...appointmentForm, time: e.target.value })
                         }
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇時間</option>
                         <option value="09:00">09:00</option>
@@ -1679,6 +2252,12 @@
                           });
                         }}
                         required
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇科別</option>
                         {departments.map((dept) => (
@@ -1703,7 +2282,12 @@
                           });
                         }}
                         required
-                        disabled={!appointmentForm.department}
+                        disabled={!appointmentForm.department || appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇醫師</option>
                         {doctors
@@ -1724,26 +2308,51 @@
                         onChange={(e) =>
                           setAppointmentForm({ ...appointmentForm, reason: e.target.value })
                         }
+                        disabled={appointmentCompleted}
+                        style={appointmentCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => {
-                        setAppointmentForm({
-                          date: "",
-                          time: "",
-                          doctor: "",
-                          doctorId: "",
-                          department: "",
-                          reason: "",
-                        });
-                        setAppointmentCompleted(false); // 清除時重置完成狀態
-                        updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
+                    {appointmentCompleted && (
+                      <div style={{
+                        padding: "12px",
+                        borderRadius: "12px",
+                        background: "#fff7e0",
+                        border: "1px dashed #e7b86d",
+                        color: "#8a641f",
+                        marginBottom: "16px"
                       }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        確認預約
-                      </button>
+                        <strong>預約已完成</strong>
+                        <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                          您的預約資訊已確認，無法再修改。如需變更，請聯繫客服。
+                        </p>
+                      </div>
+                    )}
+                    <div className="form-actions">
+                      {!appointmentCompleted && (
+                        <>
+                          <button type="button" className="btn-secondary" onClick={() => {
+                            setAppointmentForm({
+                              date: "",
+                              time: "",
+                              doctor: "",
+                              doctorId: "",
+                              department: "",
+                              reason: "",
+                            });
+                            setAppointmentCompleted(false); // 清除時重置完成狀態
+                            updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
+                          }}>
+                            清除
+                          </button>
+                          <button type="submit" className="btn-primary">
+                            確認預約
+                          </button>
+                        </>
+                      )}
                     </div>
                   </form>
                 )}
@@ -1761,6 +2370,12 @@
                           setSymptomForm({ ...symptomForm, description: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       />
                     </div>
                     <div className="symptom-category">
@@ -1771,13 +2386,19 @@
                             key={symptom}
                             className={`checkbox-item ${
                               symptomForm.symptoms.includes(symptom) ? "checked" : ""
-                            }`}
-                            onClick={() => toggleSymptom(symptom)}
+                            } ${symptomCompleted ? "disabled" : ""}`}
+                            onClick={() => !symptomCompleted && toggleSymptom(symptom)}
+                            style={symptomCompleted ? { 
+                              opacity: 0.6,
+                              cursor: "not-allowed",
+                              pointerEvents: "none"
+                            } : {}}
                           >
                             <input
                               type="checkbox"
                               checked={symptomForm.symptoms.includes(symptom)}
-                              onChange={() => toggleSymptom(symptom)}
+                              onChange={() => !symptomCompleted && toggleSymptom(symptom)}
+                              disabled={symptomCompleted}
                             />
                             <label>{symptom}</label>
                           </div>
@@ -1793,6 +2414,12 @@
                           setSymptomForm({ ...symptomForm, duration: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇持續時間</option>
                         <option value="1天以內">1天以內</option>
@@ -1811,6 +2438,12 @@
                           setSymptomForm({ ...symptomForm, severity: e.target.value })
                         }
                         required
+                        disabled={symptomCompleted}
+                        style={symptomCompleted ? { 
+                          background: "#f5f5f5", 
+                          cursor: "not-allowed",
+                          color: "#666"
+                        } : {}}
                       >
                         <option value="">請選擇嚴重程度</option>
                         <option value="輕微">輕微</option>
@@ -1820,17 +2453,6 @@
                       </select>
                     </div>
                     <div className="form-group">
-                      <label htmlFor="symptom-notes">其他補充說明</label>
-                      <textarea
-                        id="symptom-notes"
-                        placeholder="如有其他相關資訊，請在此補充..."
-                        value={symptomForm.additionalNotes}
-                        onChange={(e) =>
-                          setSymptomForm({ ...symptomForm, additionalNotes: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="form-group">
                       <label htmlFor="symptom-face-image">
                         上傳臉部照片（JPG，僅正面五官）
                       </label>
@@ -1838,7 +2460,9 @@
                         id="symptom-face-image"
                         type="file"
                         accept="image/jpeg"
+                        disabled={symptomCompleted}
                         onChange={(e) => {
+                          if (symptomCompleted) return;
                           const file = e.target.files && e.target.files[0];
                           // 僅在有選擇檔案時更新狀態
                           if (file) {
@@ -1851,6 +2475,10 @@
                             setSymptomImageStatus("");
                           }
                         }}
+                        style={symptomCompleted ? { 
+                          opacity: 0.6,
+                          cursor: "not-allowed"
+                        } : {}}
                       />
                       {symptomImageStatus && (
                         <small style={{ color: "#666" }}>
@@ -1858,24 +2486,42 @@
                         </small>
                       )}
                     </div>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => {
-                        setSymptomForm({
-                          description: "",
-                          duration: "",
-                          severity: "",
-                          symptoms: [],
-                          additionalNotes: "",
-                        });
-                        setSymptomCompleted(false); // 清除時重置完成狀態
-                        setSymptomImageFile(null);
-                        setSymptomImageStatus("");
+                    {symptomCompleted && (
+                      <div style={{
+                        padding: "12px",
+                        borderRadius: "12px",
+                        background: "#fff7e0",
+                        border: "1px dashed #e7b86d",
+                        color: "#8a641f",
+                        marginBottom: "16px"
                       }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        提交症狀資訊
-                      </button>
+                        <strong>症狀資訊已提交</strong>
+                        <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                          您的症狀資訊已確認，無法再修改。如需變更，請聯繫客服。
+                        </p>
+                      </div>
+                    )}
+                    <div className="form-actions">
+                      {!symptomCompleted && (
+                        <>
+                          <button type="button" className="btn-secondary" onClick={() => {
+                            setSymptomForm({
+                              description: "",
+                              duration: "",
+                              severity: "",
+                              symptoms: [],
+                            });
+                            setSymptomCompleted(false); // 清除時重置完成狀態
+                            setSymptomImageFile(null);
+                            setSymptomImageStatus("");
+                          }}>
+                            清除
+                          </button>
+                          <button type="submit" className="btn-primary">
+                            提交症狀資訊
+                          </button>
+                        </>
+                      )}
                     </div>
                   </form>
                 )}
@@ -1943,50 +2589,142 @@
                                歡迎使用 AI 問診示範介面，輸入訊息後可預覽未來模型的回覆流程。
                              </div>
                            ) : (
-                             conversation.map((message, index) => (
-                               <div
-                                 key={`${message.role}-${index}`}
-                                 className={`ai-bubble ${
-                                   message.role === "user" ? "user" : "bot"
-                                 }`}
-                               >
-                                 {message.content}
-                               </div>
-                             ))
+                             conversation.map((message, index) => {
+                              // [修正] 特殊卡片渲染邏輯
+                              if (message.role === "summary_card") {
+                                return (
+                                  <div key={`summary-${index}`} style={{
+                                    alignSelf: "center", width: "100%", maxWidth: "1000px", 
+                                    margin: "16px 0", borderRadius: "12px", overflow: "visible",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)", border: "4px solid #fff",
+                                    backgroundColor: "#f9f9f9"
+                                  }}>
+                                    {message.content.skinImage ? (
+                                        <img 
+                                          src={`data:image/png;base64,${message.content.skinImage}`} 
+                                          alt="AI 分析小卡"
+                                          style={{width: "100%", display: "block", height: "auto"}}
+                                        />
+                                    ) : (
+                                        // 這是新增的：如果沒圖片，會顯示這個，而不是消失
+                                        <div style={{padding:"40px 20px", textAlign:"center", color:"#666"}}>
+                                            <h3>⚠️ 無法顯示圖片</h3>
+                                            <p style={{fontSize:"14px"}}>
+                                                可能是後端尚未分析完成，或資料庫無紀錄。<br/>
+                                                (請按 F12 查看 Console 錯誤訊息)
+                                            </p>
+                                        </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              // [原本] 普通對話氣泡
+                              return (
+                                <div
+                                  key={`${message.role}-${index}`}
+                                  className={`ai-bubble ${message.role === "user" ? "user" : "bot"}`}
+                                >
+                                  {message.content}
+                                </div>
+                              );
+                            }))}
+                           {chatEnded && (
+                             <div className="ai-bubble bot" style={{
+                               background: "#fff7e0",
+                               border: "2px dashed #e7b86d",
+                               alignSelf: "center",
+                               maxWidth: "90%",
+                               textAlign: "center"
+                             }}>
+                               <strong style={{ color: "#8a641f" }}>對話已結束</strong>
+                               <p style={{ margin: "8px 0 0 0", color: "#666" }}>
+                                 您已結束本次問診對話，後續將由醫師進行診斷。
+                               </p>
+                             </div>
                            )}
                          </div>
-                         <div className="ai-input" 
-                           onKeyDown={(e) => {
-                             // 防止整個 div 區域的 Enter 鍵觸發表單提交
-                             if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
-                               e.preventDefault();
-                             }
-                           }}
-                         >
-                           <textarea
-                             placeholder="描述症狀或提出問題..."
-                             value={aiDraft}
-                             onChange={(event) => setAiDraft(event.target.value)}
-                             onKeyDown={(event) => {
-                               // 按 Enter 鍵（不按 Shift）時送出訊息
-                               if (event.key === "Enter" && !event.shiftKey) {
-                                 event.preventDefault(); // 防止換行和表單提交
-                                 event.stopPropagation(); // 阻止事件冒泡
-                                 handleAiSend(event); // 送出訊息
+                         {!chatEnded ? (
+                           <div className="ai-input" 
+                             onKeyDown={(e) => {
+                               // 防止整個 div 區域的 Enter 鍵觸發表單提交
+                               if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+                                 e.preventDefault();
                                }
                              }}
-                           />
-                           <button 
-                             type="button" 
-                             onClick={(e) => {
-                               e.preventDefault(); // 防止任何預設行為
-                               e.stopPropagation(); // 阻止事件冒泡
-                               handleAiSend(e);
-                             }}
                            >
-                             送出
-                           </button>
-                         </div>
+                             <textarea
+                               placeholder="描述症狀或提出問題..."
+                               value={aiDraft}
+                               onChange={(event) => setAiDraft(event.target.value)}
+                               onKeyDown={(event) => {
+                                 // 按 Enter 鍵（不按 Shift）時送出訊息
+                                 if (event.key === "Enter" && !event.shiftKey) {
+                                   event.preventDefault(); // 防止換行和表單提交
+                                   event.stopPropagation(); // 阻止事件冒泡
+                                   handleAiSend(event); // 送出訊息
+                                 }
+                               }}
+                             />
+                             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                               <button 
+                                 type="button" 
+                                 onClick={(e) => {
+                                   e.preventDefault(); // 防止任何預設行為
+                                   e.stopPropagation(); // 阻止事件冒泡
+                                   handleAiSend(e);
+                                 }}
+                               >
+                                 送出
+                               </button>
+                               <button 
+                                  type="button"
+                                  // ... 其他樣式保持不變 ...
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (window.confirm("確定要結束對話嗎？將為您生成健康摘要小卡。")) {
+                                      setChatEnded(true);
+                                      fetchAiSummary(); //呼叫函式
+                                    }
+                                  }}
+                                 style={{
+                                   padding: "8px 16px",
+                                   borderRadius: "12px",
+                                   border: "2px solid #c2c2c2",
+                                   background: "#fff",
+                                   color: "#666",
+                                   fontWeight: "bold",
+                                   cursor: "pointer",
+                                   transition: "all 0.2s ease",
+                                   fontSize: "13px"
+                                 }}
+                                 onMouseEnter={(e) => {
+                                   e.target.style.background = "#f5f5f5";
+                                   e.target.style.borderColor = "#999";
+                                 }}
+                                 onMouseLeave={(e) => {
+                                   e.target.style.background = "#fff";
+                                   e.target.style.borderColor = "#c2c2c2";
+                                 }}
+                               >
+                                 結束對話
+                               </button>
+                             </div>
+                           </div>
+                         ) : (
+                           <div style={{
+                             padding: "14px",
+                             borderRadius: "16px",
+                             background: "#f5f5f5",
+                             textAlign: "center",
+                             color: "#666"
+                           }}>
+                             <p style={{ margin: 0 }}>
+                               對話已結束，無法繼續發送訊息
+                             </p>
+                           </div>
+                         )}
                        </>
                      );
                    })()}
@@ -2002,3 +2740,7 @@
     </script>
   </body>
 </html>
+
+
+
+

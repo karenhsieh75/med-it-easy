@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import SQLModel, Session, select
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 from ..database import get_session
-from ..models import MedicalRecord, Appointment, AppointmentStatus
+from ..models import (
+    MedicalRecord,
+    Appointment,
+    AppointmentStatus,
+)
+from ..services.ai_service import generate_ai_summary
 
 router = APIRouter(prefix="/api/medical_record", tags=["病歷與診斷"])
 
@@ -12,7 +17,6 @@ router = APIRouter(prefix="/api/medical_record", tags=["病歷與診斷"])
 # Base model
 class MedicalRecordBase(SQLModel):
     appointment_id: int
-    symptoms: Optional[str] = None
 
 
 class MedicalRecordCreate(MedicalRecordBase):
@@ -26,6 +30,9 @@ class MedicalRecordUpdate(SQLModel):
 
 class MedicalRecordPublic(MedicalRecordBase):
     id: int
+    ai_summary: Optional[str]
+    ai_disease_prediction: Optional[str]
+    ai_advice: Optional[str]
     doctor_diagnosis: Optional[str]
     prescription: Optional[str]
     created_at: datetime
@@ -42,7 +49,13 @@ def create_record(record_data: MedicalRecordCreate, session: Session = Depends(g
     if not appointment:
         raise HTTPException(status_code=404, detail="找不到 appointment")
 
+    # 生成 AI summary 和 prediction
+    ai_summary, ai_disease_prediction, ai_advice = generate_ai_summary(record_data.appointment_id, session)
+
     db_record = MedicalRecord.model_validate(record_data)
+    db_record.ai_summary = ai_summary
+    db_record.ai_disease_prediction = ai_disease_prediction
+    db_record.ai_advice = ai_advice
 
     session.add(db_record)
     session.commit()

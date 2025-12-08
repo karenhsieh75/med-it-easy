@@ -1,10 +1,3 @@
-"""
-Utility for composing the skin-tone result card used by the analysis API.
-
-The generator takes a rose-chart image, appointment metadata, and short text
-snippets, then overlays them onto a pre-made template.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -14,19 +7,36 @@ from typing import Dict, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
+# Type alias for box coordinates: ((x1, y1), (x2, y2))
 BoxCoords = Tuple[Tuple[int, int], Tuple[int, int]]
+# Type alias for point coordinates: (x, y)
+PointCoords = Tuple[int, int]
 
 
 class SkinToneCardGenerator:
     """Simple helper to drop analysis results onto the card template."""
 
-    # These coordinates come from the design file (cardd.png).
+    # --- Content Box Coordinates (Region to fill text/image) ---
     ROSE_BOX: BoxCoords = ((45, 128), (180, 257))
     DIAGNOSIS_BOX: BoxCoords = ((220, 170), (410, 260))
+    
+    # Middle row boxes (Appointment info)
     APP_ID_BOX: BoxCoords = ((73, 337), (102, 371))
     APP_DATE_BOX: BoxCoords = ((198, 328), (258, 380))
     APP_CATEGORY_BOX: BoxCoords = ((334, 328), (403, 378))
+    
+    # Bottom box
     LLM_ADVICE_BOX: BoxCoords = ((70, 464), (430, 496))
+
+    # --- Label Coordinates (Single point (x, y) for headers) ---
+    # User provided coordinates for overlaying crisp header text
+    LABEL_POS_SKIN_TONE: PointCoords = (80, 103)   # 膚色示意
+    LABEL_POS_DIAGNOSIS: PointCoords = (222, 145)  # 望診分析
+    LABEL_POS_ID: PointCoords = (61, 293)          # 預約編號
+    LABEL_POS_TIME: PointCoords = (201, 293)      # 預約時間
+    LABEL_POS_TYPE: PointCoords = (343, 293)      # 預約類別
+
+    LABEL_POS_ADVICE: PointCoords = (47, 443)      # LLM建議
 
     def __init__(self, template_path: Path, font_path: Path | None = None) -> None:
         self.template_path = Path(template_path)
@@ -57,9 +67,24 @@ class SkinToneCardGenerator:
     def _paste_image(self, canvas: Image.Image, image_bytes: bytes, box: BoxCoords) -> None:
         (x1, y1), (x2, y2) = box
         target_w, target_h = self._box_size(box)
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-        resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-        canvas.paste(resized, (x1, y1), mask=resized)
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+            resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+            canvas.paste(resized, (x1, y1), mask=resized)
+        except Exception as e:
+            print(f"Error pasting image: {e}")
+
+    def _draw_label(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        pos: PointCoords,
+        font_size: int = 20,
+        color: Tuple[int, int, int] = (255, 255, 255),
+    ) -> None:
+        """Draws a single line header label at a specific position."""
+        font = self._load_font(font_size)
+        draw.text(pos, text, font=font, fill=color)
 
     def _draw_centered_text(
         self,
@@ -131,7 +156,20 @@ class SkinToneCardGenerator:
         canvas = self.base_template.copy()
         draw = ImageDraw.Draw(canvas)
 
+        # 1. Paste Images
         self._paste_image(canvas, rose_chart_bytes, self.ROSE_BOX)
+
+        # 2. Draw Static Headers (New Requirement)
+        # Using white color (255, 255, 255) to pop against dark bubbles
+        header_size = 14  # Adjust size if needed
+        self._draw_label(draw, "膚色示意", self.LABEL_POS_SKIN_TONE, header_size)
+        self._draw_label(draw, "AI望診", self.LABEL_POS_DIAGNOSIS, header_size)
+        self._draw_label(draw, "預約編號", self.LABEL_POS_ID, header_size)
+        self._draw_label(draw, "預約時間", self.LABEL_POS_TIME, header_size)
+        self._draw_label(draw, "預約類別", self.LABEL_POS_TYPE, header_size)
+        self._draw_label(draw, "建議", self.LABEL_POS_ADVICE, header_size)
+
+        # 3. Draw Dynamic Content
         self._draw_multiline_text(
             draw,
             diagnosis_text,

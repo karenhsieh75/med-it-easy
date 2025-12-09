@@ -6,7 +6,7 @@
 - **Physician Support**: Provides doctors with structured medical summaries and preliminary disease predictions to assist in diagnosis.
 - **Enhanced Efficiency**: Aims to alleviate clinical workloads and improve the overall quality of healthcare services.
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 med-it-easy/

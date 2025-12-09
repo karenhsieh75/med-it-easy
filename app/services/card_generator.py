@@ -12,7 +12,10 @@ import io
 from pathlib import Path
 from typing import Dict, Tuple
 
+from sqlmodel import Session, select
 from PIL import Image, ImageDraw, ImageFont
+
+from ..models import MedicalRecord
 
 BoxCoords = Tuple[Tuple[int, int], Tuple[int, int]]
 
@@ -26,9 +29,15 @@ class SkinToneCardGenerator:
     APP_ID_BOX: BoxCoords = ((73, 337), (102, 371))
     APP_DATE_BOX: BoxCoords = ((198, 328), (258, 380))
     APP_CATEGORY_BOX: BoxCoords = ((334, 328), (403, 378))
-    LLM_ADVICE_BOX: BoxCoords = ((70, 464), (430, 496))
+    LLM_ADVICE_BOX: BoxCoords = ((86, 453), (420, 505))
+    DEFAULT_LLM_ADVICE = "保守規劃，請先遵循醫師或護理師提供的生活與補水指示，並記錄症狀再一次諮詢以便審視趨勢。"
 
-    def __init__(self, template_path: Path, font_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        template_path: Path,
+        font_path: Path | None = None,
+        session: Session | None = None,
+    ) -> None:
         self.template_path = Path(template_path)
         if not self.template_path.exists():
             raise FileNotFoundError(f"Card template not found: {self.template_path}")
@@ -40,6 +49,7 @@ class SkinToneCardGenerator:
 
         # Keep an untouched template to clone per request so we do not mutate the original.
         self.base_template = Image.open(self.template_path).convert("RGBA")
+        self.session = session
 
     def _load_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         if self.font_path:
@@ -115,13 +125,35 @@ class SkinToneCardGenerator:
             draw.text((cursor_x, cursor_y), line, font=font, fill=color)
             cursor_y += font_size + line_spacing
 
+    def _fetch_llm_advice(self, appointment_id: int | None) -> str:
+        """
+        Pull the latest LLM advice from MedicalRecord when available.
+        Falls back to a default placeholder to keep card generation resilient.
+        """
+        if not appointment_id or not self.session:
+            return self.DEFAULT_LLM_ADVICE
+
+        try:
+            advice = self.session.exec(
+                select(MedicalRecord.ai_advice).where(
+                    MedicalRecord.appointment_id == appointment_id
+                )
+            ).first()
+        except Exception:
+            return self.DEFAULT_LLM_ADVICE
+
+        if isinstance(advice, tuple):
+            advice = advice[0]
+        return advice or self.DEFAULT_LLM_ADVICE
+
     def generate_card(
         self,
         *,
         rose_chart_bytes: bytes,
         diagnosis_text: str,
         appointment_fields: Dict[str, str],
-        llm_advice: str,
+        appointment_id: int | None = None,
+        llm_advice: str | None = None,
         output_path: Path | None = None,
     ) -> str:
         """
@@ -130,6 +162,7 @@ class SkinToneCardGenerator:
         """
         canvas = self.base_template.copy()
         draw = ImageDraw.Draw(canvas)
+        advice_text = llm_advice or self._fetch_llm_advice(appointment_id)
 
         self._paste_image(canvas, rose_chart_bytes, self.ROSE_BOX)
         self._draw_multiline_text(
@@ -161,7 +194,7 @@ class SkinToneCardGenerator:
 
         self._draw_multiline_text(
             draw,
-            llm_advice,
+            advice_text,
             self.LLM_ADVICE_BOX,
             font_size=12,
         )

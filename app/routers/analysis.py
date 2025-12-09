@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..services.card_generator import SkinToneCardGenerator
-from ..services.skin_tone import analyze_face_color
+from ..services.skin_tone_witheye import analyze_face_color
 from ..database import get_session
 from ..models import AnalysisRecord, Appointment, User, UserRole
 
@@ -19,7 +19,6 @@ router = APIRouter(prefix="/api/analysis", tags=["膚色分析"])
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 CARD_TEMPLATE = ASSETS_DIR / "cardd.png"
 CARD_FONT = ASSETS_DIR / "Iansui-Regular.ttf"
-LLM_PLACEHOLDER = "保持規律作息、補充水分並記得防曬，下一次回診一起檢視膚況。"
 
 
 class AnalysisRecordPublic(BaseModel):
@@ -84,7 +83,7 @@ async def analyze_skin_tone(
     diagnosis_text = f"{result.get('explanation', '')} {result.get('advice', '')}".strip()
 
     try:
-        generator = SkinToneCardGenerator(CARD_TEMPLATE, CARD_FONT)
+        generator = SkinToneCardGenerator(CARD_TEMPLATE, CARD_FONT, session)
         rose_base64 = analysis.get("_analysis_rose_plot_base64")
         if not rose_base64:
             raise HTTPException(status_code=500, detail="缺少玫瑰圖資料，無法生成卡片")
@@ -93,7 +92,7 @@ async def analyze_skin_tone(
             rose_chart_bytes=rose_bytes,
             diagnosis_text=diagnosis_text,
             appointment_fields=appointment_fields,
-            llm_advice=LLM_PLACEHOLDER,
+            appointment_id=appointment.id if appointment else None,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))

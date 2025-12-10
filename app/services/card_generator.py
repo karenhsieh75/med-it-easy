@@ -29,17 +29,15 @@ class SkinToneCardGenerator:
     APP_CATEGORY_BOX: BoxCoords = ((334, 328), (403, 378))
     
     # Bottom box
-    LLM_ADVICE_BOX: BoxCoords = ((87, 450), (420, 496))
+    LLM_ADVICE_BOX: BoxCoords = ((87, 450), (420, 525))
 
     # --- Label Coordinates (Single point (x, y) for headers) ---
-    # User provided coordinates for overlaying crisp header text
-    LABEL_POS_SKIN_TONE: PointCoords = (80, 103)   # 膚色示意
-    LABEL_POS_DIAGNOSIS: PointCoords = (222, 145)  # 望診分析
-    LABEL_POS_ID: PointCoords = (61, 293)          # 預約編號
-    LABEL_POS_TIME: PointCoords = (201, 293)      # 預約時間
-    LABEL_POS_TYPE: PointCoords = (343, 293)      # 預約類別
-
-    LABEL_POS_ADVICE: PointCoords = (47, 443)      # LLM建議
+    LABEL_POS_SKIN_TONE: PointCoords = (80, 103)
+    LABEL_POS_DIAGNOSIS: PointCoords = (222, 145)
+    LABEL_POS_ID: PointCoords = (61, 293)
+    LABEL_POS_TIME: PointCoords = (201, 293)
+    LABEL_POS_TYPE: PointCoords = (343, 293)
+    LABEL_POS_ADVICE: PointCoords = (47, 443)
 
     def __init__(self, template_path: Path, font_path: Path | None = None, session: Session | None = None) -> None:
         self.template_path = Path(template_path)
@@ -48,10 +46,8 @@ class SkinToneCardGenerator:
 
         self.font_path = Path(font_path) if font_path else None
         if self.font_path and not self.font_path.exists():
-            # Fall back to default fonts if the supplied font is missing.
             self.font_path = None
         
-        # Keep an untouched template to clone per request so we do not mutate the original.
         self.base_template = Image.open(self.template_path).convert("RGBA")
         self.session = session
 
@@ -65,18 +61,20 @@ class SkinToneCardGenerator:
             return default_text
 
         try:
-            advice_row = self.session.exec(
-                select(MedicalRecord.ai_advice).where(MedicalRecord.appointment_id == appointment_id)
+            # ✅ 修正：查詢整個 MedicalRecord 物件
+            medical_record = self.session.exec(
+                select(MedicalRecord).where(MedicalRecord.appointment_id == appointment_id)
             ).first()
-        except Exception:
+            
+            if medical_record and medical_record.ai_advice:
+                return medical_record.ai_advice
+            
+            return default_text
+        except Exception as e:
+            print(f"❌ 查詢失敗: {e}")
             return default_text
 
-        if isinstance(advice_row, tuple):
-            advice_row = advice_row[0]
-        return advice_row or default_text
-
     def _load_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        #print("new")
         if self.font_path:
             try:
                 return ImageFont.truetype(str(self.font_path), size)
@@ -130,7 +128,7 @@ class SkinToneCardGenerator:
         text_h = bbox[3] - bbox[1]
 
         draw_x = center_x - text_w // 2
-        draw_y = center_y - text_h // 2 - 2  # small tweak to align visually
+        draw_y = center_y - text_h // 2 - 2
         draw.text((draw_x, draw_y), text, font=font, fill=color)
 
     def _draw_multiline_text(
@@ -188,9 +186,8 @@ class SkinToneCardGenerator:
         # 1. Paste Images
         self._paste_image(canvas, rose_chart_bytes, self.ROSE_BOX)
 
-        # 2. Draw Static Headers (New Requirement)
-        # Using white color (255, 255, 255) to pop against dark bubbles
-        header_size = 14  # Adjust size if needed
+        # 2. Draw Static Headers
+        header_size = 14
         self._draw_label(draw, "膚色示意", self.LABEL_POS_SKIN_TONE, header_size)
         self._draw_label(draw, "AI望診", self.LABEL_POS_DIAGNOSIS, header_size)
         self._draw_label(draw, "預約編號", self.LABEL_POS_ID, header_size)

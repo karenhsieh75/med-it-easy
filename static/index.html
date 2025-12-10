@@ -710,7 +710,7 @@
       {
         id: "symptom",
         title: "填寫症狀",
-        description:`
+        description: `
            請填寫您的症狀資訊，協助醫師更準確地了解您的狀況。
            若您有上傳圖片，系統會在 AI 問診完成後，自動生成專屬的建議小卡供您參考。
            `,
@@ -1650,910 +1650,915 @@
           setActiveFeature({ id: "support" });
           localStorage.setItem("activeFeature", "support");
 
-      // 從後端獲取完整的症狀資料並填充到表單中（保持顯示已提交的資料）
-      setSymptomForm({
-        description: symptomResult.description,
-        duration: symptomResult.duration,
-        severity: symptomResult.severity,
-        symptoms: symptomResult.symptoms || [],
-      });
-      // 保留圖片上傳狀態（如果有的話）
-      // setSymptomImageFile 和 setSymptomImageStatus 保持不變
-    } catch (error) {
-      console.error("症狀提交或照片上傳發生錯誤:", error);
-      alert("提交症狀或上傳照片時發生錯誤，請確認後端服務是否正常運行。");
-    }
-        };
-
-    //獲取 AI 小卡 (只抓取圖片)
-    // [最終極速版] 直接使用暫存的圖片，無需等待後端查詢
-    const fetchAiSummary = async () => {
-      if (!currentUser || !currentAppointmentId) return;
-
-      try {
-        console.log("準備顯示 AI 小卡...");
-
-        // 1. 為了保持資料完整性，還是要在背景觸發一下病歷生成 (紀錄文字對話)
-        // 但我們不需要等它完成，因為圖片我們已經有了
-        let symptomString = "患者未填寫症狀";
-        const desc = symptomForm.description || "";
-        const tags = symptomForm.symptoms ? symptomForm.symptoms.join(", ") : "";
-        if (desc || tags) symptomString = `主訴：${desc}。症狀標籤：${tags}`;
-
-        fetch(`${API_BASE_URL}/api/medical_record/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "accept": "application/json" },
-          body: JSON.stringify({
-            appointment_id: currentAppointmentId,
-            symptoms: symptomString
-          })
-        }).catch(e => console.warn("背景生成病歷紀錄失敗(不影響顯示):", e));
-
-        // 2. 直接顯示剛才 POST 存下來的圖片
-        if (tempAiImage) {
-          const summaryMessage = {
-            role: "summary_card",
-            content: { skinImage: tempAiImage }
-          };
-          setConversation(prev => [...prev, summaryMessage]);
-          console.log("✅ 成功顯示暫存的 AI 圖片");
-        } else {
-          setConversation(prev => [...prev, { role: "assistant", content: "對話已結束。等待醫師看診 (未偵測到圖片，請確認上傳步驟是否成功)。" }]);
+          // 從後端獲取完整的症狀資料並填充到表單中（保持顯示已提交的資料）
+          setSymptomForm({
+            description: symptomResult.description,
+            duration: symptomResult.duration,
+            severity: symptomResult.severity,
+            symptoms: symptomResult.symptoms || [],
+          });
+          // 保留圖片上傳狀態（如果有的話）
+          // setSymptomImageFile 和 setSymptomImageStatus 保持不變
+        } catch (error) {
+          console.error("症狀提交或照片上傳發生錯誤:", error);
+          alert("提交症狀或上傳照片時發生錯誤，請確認後端服務是否正常運行。");
         }
+      };
 
-      } catch (error) {
-        console.error("執行失敗:", error);
-      }
-    };
+      //獲取 AI 小卡 (只抓取圖片)
+      // [最終極速版] 直接使用暫存的圖片，無需等待後端查詢
+      const fetchAiSummary = async () => {
+        if (!currentUser || !currentAppointmentId) return;
 
-    // 處理症狀選項切換
-    const toggleSymptom = (symptom) => {
-      setSymptomForm((prev) => {
-        const symptoms = prev.symptoms.includes(symptom)
-          ? prev.symptoms.filter((s) => s !== symptom)
-          : [...prev.symptoms, symptom];
-        return { ...prev, symptoms };
-      });
-    };
+        try {
+          console.log("結束對話，準備生成病歷...");
 
-    // 常見症狀選項
-    const commonSymptoms = [
-      "發燒",
-      "咳嗽",
-      "頭痛",
-      "喉嚨痛",
-      "流鼻水",
-      "肌肉痠痛",
-      "疲勞",
-      "噁心",
-      "腹瀉",
-      "呼吸困難",
-      "胸痛",
-      "頭暈",
-    ];
+          // ✅ 組建症狀字串
+          let symptomString = "患者未填寫症狀";
+          const desc = symptomForm.description || "";
+          const tags = symptomForm.symptoms ? symptomForm.symptoms.join(", ") : "";
+          if (desc || tags) symptomString = `主訴：${desc}。症狀標籤：${tags}`;
 
-    return (
-      <div className="app">
-        <aside className="sidebar">
-          <h1>功能表</h1>
-          <div className="feature-list">
-            {/*根據角色顯示不同的選單 */}
-            {(currentUser?.role === "doctor"
-              ? doctorFeatureConfigs
-              : featureConfigs
-            ).map((feature) => (
-              <div
-                key={feature.id}
-                className={`feature-card ${activeFeature.id === feature.id ? "active" : ""
-                  }`}
-                onClick={() => selectFeature(feature)}
-              >
-                {feature.title}
+          // 1. 後台保存病歷 + AI 建議
+          await fetch(`${API_BASE_URL}/api/medical_record/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              appointment_id: currentAppointmentId,
+              symptoms: symptomString  // ✅ 現在有定義了
+            })
+          });
+
+          // 2. 等待資料庫寫入
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // 3. 重新生成小卡（帶上最新的 ai_advice）
+          const regenerateResponse = await fetch(
+            `${API_BASE_URL}/api/analysis/regenerate-card/${currentAppointmentId}`,
+            { method: "POST" }
+          );
+
+          if (regenerateResponse.ok) {
+            const regenerateData = await regenerateResponse.json();
+            const newCardBase64 = regenerateData.analysis_result?.analysis_card_base64
+              || regenerateData.analysis_card_base64;
+
+            if (newCardBase64) {
+              const summaryMessage = {
+                role: "summary_card",
+                content: { skinImage: newCardBase64 }
+              };
+              setConversation(prev => [...prev, summaryMessage]);
+              console.log("✅ 病患端小卡已更新，包含真實的 AI 建議");
+            } else {
+              console.warn("⚠️ 無法取得新小卡 base64");
+              if (tempAiImage) {
+                const summaryMessage = {
+                  role: "summary_card",
+                  content: { skinImage: tempAiImage }
+                };
+                setConversation(prev => [...prev, summaryMessage]);
+              }
+            }
+          } else {
+            console.warn("⚠️ 重新生成小卡失敗，狀態碼:", regenerateResponse.status);
+            if (tempAiImage) {
+              const summaryMessage = {
+                role: "summary_card",
+                content: { skinImage: tempAiImage }
+              };
+              setConversation(prev => [...prev, summaryMessage]);
+            }
+          }
+
+        } catch (error) {
+          console.error("執行失敗:", error);
+          if (tempAiImage) {
+            const summaryMessage = {
+              role: "summary_card",
+              content: { skinImage: tempAiImage }
+            };
+            setConversation(prev => [...prev, summaryMessage]);
+          }
+        }
+      };
+      // 處理症狀選項切換
+      const toggleSymptom = (symptom) => {
+        setSymptomForm((prev) => {
+          const symptoms = prev.symptoms.includes(symptom)
+            ? prev.symptoms.filter((s) => s !== symptom)
+            : [...prev.symptoms, symptom];
+          return { ...prev, symptoms };
+        });
+      };
+
+      // 常見症狀選項
+      const commonSymptoms = [
+        "發燒",
+        "咳嗽",
+        "頭痛",
+        "喉嚨痛",
+        "流鼻水",
+        "肌肉痠痛",
+        "疲勞",
+        "噁心",
+        "腹瀉",
+        "呼吸困難",
+        "胸痛",
+        "頭暈",
+      ];
+
+      return (
+        <div className="app">
+          <aside className="sidebar">
+            <h1>功能表</h1>
+            <div className="feature-list">
+              {/*根據角色顯示不同的選單 */}
+              {(currentUser?.role === "doctor"
+                ? doctorFeatureConfigs
+                : featureConfigs
+              ).map((feature) => (
+                <div
+                  key={feature.id}
+                  className={`feature-card ${activeFeature.id === feature.id ? "active" : ""
+                    }`}
+                  onClick={() => selectFeature(feature)}
+                >
+                  {feature.title}
+                </div>
+              ))}
+            </div>
+            {currentUser?.role !== "doctor" && (
+
+              <div className="chat-box">
+                <div style={{
+                  width: "100%",
+                  height: "120px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "12px",
+                  border: "1px solid #1a3a5c",
+                  background: "#1a3a5c",
+                  overflow: "hidden",
+                  position: "relative"
+                }}>
+                  <img
+                    src="/static/logo.png"
+                    alt="Logo"
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      width: "auto",
+                      height: "auto",
+                      objectFit: "contain",
+                      padding: "10px"
+                    }}
+                    onError={(e) => {
+                      // 如果圖片載入失敗，顯示提示文字
+                      e.target.style.display = "none";
+                      const parent = e.target.parentNode;
+                      if (!parent.querySelector('.logo-placeholder')) {
+                        const placeholder = document.createElement("div");
+                        placeholder.className = "logo-placeholder";
+                        placeholder.textContent = "請將 logo 圖片放置於 static/logo.png";
+                        placeholder.style.cssText = "color: #fff; font-size: 12px; text-align: center; padding: 20px; position: absolute;";
+                        parent.appendChild(placeholder);
+                      }
+                    }}
+                  />
+                </div>
               </div>
-            ))}
-          </div>
-          {currentUser?.role !== "doctor" && (
+            )}
+          </aside>
 
-            <div className="chat-box">
-              <div style={{
-                width: "100%",
-                height: "120px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "12px",
-                border: "1px solid #1a3a5c",
-                background: "#1a3a5c",
-                overflow: "hidden",
-                position: "relative"
-              }}>
-                <img
-                  src="/static/logo.png"
-                  alt="Logo"
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                    width: "auto",
-                    height: "auto",
-                    objectFit: "contain",
-                    padding: "10px"
-                  }}
-                  onError={(e) => {
-                    // 如果圖片載入失敗，顯示提示文字
-                    e.target.style.display = "none";
-                    const parent = e.target.parentNode;
-                    if (!parent.querySelector('.logo-placeholder')) {
-                      const placeholder = document.createElement("div");
-                      placeholder.className = "logo-placeholder";
-                      placeholder.textContent = "請將 logo 圖片放置於 static/logo.png";
-                      placeholder.style.cssText = "color: #fff; font-size: 12px; text-align: center; padding: 20px; position: absolute;";
-                      parent.appendChild(placeholder);
-                    }
-                  }}
-                />
+          {/* 漢堡選單 */}
+          <div className="hamburger-menu" ref={menuRef}>
+            <button
+              className={`hamburger-button ${menuOpen ? "active" : ""}`}
+              onClick={toggleMenu}
+              aria-label="選單"
+            >
+              <span></span>
+              <span></span>
+              <span></span>
+            </button>
+            <div className={`menu-dropdown ${menuOpen ? "active" : ""}`}>
+              {isLoggedIn ? (
+                <>
+                  <div className="menu-item" style={{
+                    background: "#e8f5f3",
+                    fontWeight: "bold",
+                    cursor: "default"
+                  }}>
+                    {currentUser?.full_name || "已登入"}
+                  </div>
+                  <div
+                    className="menu-item"
+                    onClick={() => {
+                      //強制登出並跳轉登入
+                      setCurrentUser(null);
+                      setIsLoggedIn(false);
+                      localStorage.clear(); // 清空所有資料
+                      updateCurrentAppointmentId(null);
+                      setAppointmentCompleted(false);
+                      setSymptomCompleted(false);
+                      setConversation([]);
+
+                      alert("已登出");
+                      setMenuOpen(false);
+                      setLoginModalOpen(true); //自動打開登入窗
+                    }}
+                  >
+                    登出
+                  </div>
+                </>
+              ) : (
+                <div className="menu-item" onClick={handleLogin}>
+                  登入/註冊
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 註冊彈窗 */}
+          {registerModalOpen && (
+            <div className="modal-backdrop" role="dialog" aria-modal="true">
+              <div className="modal-card">
+                <button
+                  className="modal-close"
+                  aria-label="關閉註冊視窗"
+                  onClick={closeRegisterModal}
+                >
+                  ×
+                </button>
+                <h3>註冊帳號</h3>
+                <p className="lead">資料不會被用來進行非醫療看診以外之行為</p>
+                <form onSubmit={handleRegisterSubmit}>
+                  <div className="modal-form-group">
+                    <label htmlFor="register-name">姓名</label>
+                    <input
+                      id="register-name"
+                      type="text"
+                      placeholder="請輸入姓名"
+                      value={registerForm.name}
+                      onChange={(event) =>
+                        handleRegisterInputChange("name", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="modal-form-group">
+                    <label htmlFor="register-account">帳號（Username）</label>
+                    <input
+                      id="register-account"
+                      type="text"
+                      placeholder="請輸入帳號名稱"
+                      value={registerForm.account}
+                      onChange={(event) =>
+                        handleRegisterInputChange("account", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="modal-form-group">
+                    <label htmlFor="register-password">密碼</label>
+                    <input
+                      id="register-password"
+                      type="password"
+                      placeholder="請輸入密碼"
+                      value={registerForm.password}
+                      onChange={(event) =>
+                        handleRegisterInputChange("password", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="modal-form-group">
+                    <label htmlFor="register-confirm-password">確認密碼</label>
+                    <input
+                      id="register-confirm-password"
+                      type="password"
+                      placeholder="請再次輸入密碼"
+                      value={registerForm.confirmPassword}
+                      onChange={(event) =>
+                        handleRegisterInputChange("confirmPassword", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  {registerStatus && <p className="modal-status">{registerStatus}</p>}
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setRegisterForm({ name: "", account: "", password: "", confirmPassword: "" });
+                        setRegisterStatus("");
+                      }}
+                    >
+                      清除
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      註冊
+                    </button>
+                  </div>
+                  <div style={{ marginTop: "16px", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      onClick={switchToLogin}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#8bd2c5",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        fontSize: "14px",
+                      }}
+                    >
+                      已有帳號？前往登入
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
-        </aside>
 
-        {/* 漢堡選單 */}
-        <div className="hamburger-menu" ref={menuRef}>
-          <button
-            className={`hamburger-button ${menuOpen ? "active" : ""}`}
-            onClick={toggleMenu}
-            aria-label="選單"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-          <div className={`menu-dropdown ${menuOpen ? "active" : ""}`}>
-            {isLoggedIn ? (
-              <>
-                <div className="menu-item" style={{
-                  background: "#e8f5f3",
-                  fontWeight: "bold",
-                  cursor: "default"
-                }}>
-                  {currentUser?.full_name || "已登入"}
-                </div>
-                <div
-                  className="menu-item"
-                  onClick={() => {
-                    //強制登出並跳轉登入
-                    setCurrentUser(null);
-                    setIsLoggedIn(false);
-                    localStorage.clear(); // 清空所有資料
-                    updateCurrentAppointmentId(null);
-                    setAppointmentCompleted(false);
-                    setSymptomCompleted(false);
-                    setConversation([]);
-
-                    alert("已登出");
-                    setMenuOpen(false);
-                    setLoginModalOpen(true); //自動打開登入窗
-                  }}
+          {/* 登入彈窗 */}
+          {loginModalOpen && (
+            <div className="modal-backdrop" role="dialog" aria-modal="true">
+              <div className="modal-card">
+                <button
+                  className="modal-close"
+                  aria-label="關閉登入視窗"
+                  onClick={closeLoginModal}
                 >
-                  登出
-                </div>
-              </>
-            ) : (
-              <div className="menu-item" onClick={handleLogin}>
-                登入/註冊
+                  ×
+                </button>
+                <h3>登入帳號</h3>
+                <p className="lead">資料不會被用來進行非醫療看診以外之行為</p>
+                <form onSubmit={handleLoginSubmit}>
+                  <div className="modal-form-group">
+                    <label htmlFor="login-account">帳號（Username）</label>
+                    <input
+                      id="login-account"
+                      type="text"
+                      placeholder="請輸入帳號名稱"
+                      value={loginForm.account}
+                      onChange={(event) =>
+                        handleLoginInputChange("account", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="modal-form-group">
+                    <label htmlFor="login-password">密碼</label>
+                    <input
+                      id="login-password"
+                      type="password"
+                      placeholder="請輸入密碼"
+                      value={loginForm.password}
+                      onChange={(event) =>
+                        handleLoginInputChange("password", event.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                  {loginStatus && <p className="modal-status">{loginStatus}</p>}
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setLoginForm({ account: "", password: "" });
+                        setLoginStatus("");
+                      }}
+                    >
+                      清除
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      登入
+                    </button>
+                  </div>
+                  <div style={{ marginTop: "16px", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      onClick={switchToRegister}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#8bd2c5",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        fontSize: "14px",
+                      }}
+                    >
+                      還沒有帳號？前往註冊
+                    </button>
+                  </div>
+                </form>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* 註冊彈窗 */}
-        {registerModalOpen && (
-          <div className="modal-backdrop" role="dialog" aria-modal="true">
-            <div className="modal-card">
-              <button
-                className="modal-close"
-                aria-label="關閉註冊視窗"
-                onClick={closeRegisterModal}
-              >
-                ×
-              </button>
-              <h3>註冊帳號</h3>
-              <p className="lead">資料不會被用來進行非醫療看診以外之行為</p>
-              <form onSubmit={handleRegisterSubmit}>
-                <div className="modal-form-group">
-                  <label htmlFor="register-name">姓名</label>
-                  <input
-                    id="register-name"
-                    type="text"
-                    placeholder="請輸入姓名"
-                    value={registerForm.name}
-                    onChange={(event) =>
-                      handleRegisterInputChange("name", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label htmlFor="register-account">帳號（Username）</label>
-                  <input
-                    id="register-account"
-                    type="text"
-                    placeholder="請輸入帳號名稱"
-                    value={registerForm.account}
-                    onChange={(event) =>
-                      handleRegisterInputChange("account", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label htmlFor="register-password">密碼</label>
-                  <input
-                    id="register-password"
-                    type="password"
-                    placeholder="請輸入密碼"
-                    value={registerForm.password}
-                    onChange={(event) =>
-                      handleRegisterInputChange("password", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label htmlFor="register-confirm-password">確認密碼</label>
-                  <input
-                    id="register-confirm-password"
-                    type="password"
-                    placeholder="請再次輸入密碼"
-                    value={registerForm.confirmPassword}
-                    onChange={(event) =>
-                      handleRegisterInputChange("confirmPassword", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                {registerStatus && <p className="modal-status">{registerStatus}</p>}
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setRegisterForm({ name: "", account: "", password: "", confirmPassword: "" });
-                      setRegisterStatus("");
-                    }}
-                  >
-                    清除
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    註冊
-                  </button>
-                </div>
-                <div style={{ marginTop: "16px", textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={switchToLogin}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#8bd2c5",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                      fontSize: "14px",
-                    }}
-                  >
-                    已有帳號？前往登入
-                  </button>
-                </div>
-              </form>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* 登入彈窗 */}
-        {loginModalOpen && (
-          <div className="modal-backdrop" role="dialog" aria-modal="true">
-            <div className="modal-card">
-              <button
-                className="modal-close"
-                aria-label="關閉登入視窗"
-                onClick={closeLoginModal}
-              >
-                ×
-              </button>
-              <h3>登入帳號</h3>
-              <p className="lead">資料不會被用來進行非醫療看診以外之行為</p>
-              <form onSubmit={handleLoginSubmit}>
-                <div className="modal-form-group">
-                  <label htmlFor="login-account">帳號（Username）</label>
-                  <input
-                    id="login-account"
-                    type="text"
-                    placeholder="請輸入帳號名稱"
-                    value={loginForm.account}
-                    onChange={(event) =>
-                      handleLoginInputChange("account", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label htmlFor="login-password">密碼</label>
-                  <input
-                    id="login-password"
-                    type="password"
-                    placeholder="請輸入密碼"
-                    value={loginForm.password}
-                    onChange={(event) =>
-                      handleLoginInputChange("password", event.target.value)
-                    }
-                    required
-                  />
-                </div>
-                {loginStatus && <p className="modal-status">{loginStatus}</p>}
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setLoginForm({ account: "", password: "" });
-                      setLoginStatus("");
-                    }}
-                  >
-                    清除
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    登入
-                  </button>
-                </div>
-                <div style={{ marginTop: "16px", textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={switchToRegister}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#8bd2c5",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                      fontSize: "14px",
-                    }}
-                  >
-                    還沒有帳號？前往註冊
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+          {/*醫師查看詳情與 AI 診斷彈窗 */}
+          {selectedAppt && (
+            <div className="modal-backdrop" role="dialog" aria-modal="true">
+              <div className="modal-card">
+                <button className="modal-close" onClick={closeDetailsModal}>
+                  ×
+                </button>
+                <h3>病患預約詳情</h3>
+                <div className="details-list" style={{ marginTop: "20px" }}>
+                  <div className="details-item">
+                    <strong>預約編號：</strong> {selectedAppt.id}
+                  </div>
+                  <div className="details-item">
+                    <strong>病患編號：</strong> {selectedAppt.patient_id}
+                  </div>
+                  <div className="details-item">
+                    <strong>日期時間：</strong> {selectedAppt.date}{" "}
+                    {selectedAppt.time}
+                  </div>
+                  <div className="details-item">
+                    <strong>看診科別：</strong> {selectedAppt.department}
+                  </div>
 
-        {/*醫師查看詳情與 AI 診斷彈窗 */}
-        {selectedAppt && (
-          <div className="modal-backdrop" role="dialog" aria-modal="true">
-            <div className="modal-card">
-              <button className="modal-close" onClick={closeDetailsModal}>
-                ×
-              </button>
-              <h3>病患預約詳情</h3>
-              <div className="details-list" style={{ marginTop: "20px" }}>
-                <div className="details-item">
-                  <strong>預約編號：</strong> {selectedAppt.id}
-                </div>
-                <div className="details-item">
-                  <strong>病患編號：</strong> {selectedAppt.patient_id}
-                </div>
-                <div className="details-item">
-                  <strong>日期時間：</strong> {selectedAppt.date}{" "}
-                  {selectedAppt.time}
-                </div>
-                <div className="details-item">
-                  <strong>看診科別：</strong> {selectedAppt.department}
-                </div>
+                  {/* 區塊 1: AI 疾病預測 (從 medical_record 拿) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #8bd2c5" }}>
+                    <strong>AI 輔助診斷 (疾病預測)：</strong>
+                    <div className="ai-prediction-box" style={{ fontWeight: "bold", color: "#2c5282" }}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_disease_prediction : "尚無資料"}
+                    </div>
+                  </div>
 
-                {/* 區塊 1: AI 疾病預測 (從 medical_record 拿) */}
-                <div className="details-item" style={{ borderLeft: "4px solid #8bd2c5" }}>
-                  <strong>AI 輔助診斷 (疾病預測)：</strong>
-                  <div className="ai-prediction-box" style={{ fontWeight: "bold", color: "#2c5282" }}>
-                    {selectedApptAiRecord ? selectedApptAiRecord.ai_disease_prediction : "尚無資料"}
+                  {/* 區塊 2: AI 摘要 (從 medical_record 拿 - 新增的部分) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #71d2c0" }}>
+                    <strong>AI 重點摘要：</strong>
+                    <div style={{ marginTop: "8px", lineHeight: "1.6", color: "#444" }}>
+                      {selectedApptAiRecord ? selectedApptAiRecord.ai_summary : "尚無資料"}
+                    </div>
+                  </div>
+                  {/* 區塊 3: 膚色分析狀況 (醫師端：只顯示純文字診斷) */}
+                  <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
+                    <strong>皮膚狀況分析：</strong>
+                    {selectedApptSkinTone ? (
+                      <div style={{ marginTop: "8px" }}>
+                        {/* 解釋 (Explanation) */}
+                        {selectedApptSkinTone.explanation && (
+                          <div style={{ fontSize: "14px", color: "#333", marginBottom: "8px", lineHeight: "1.5" }}>
+                            <strong>分析：</strong>
+                            {selectedApptSkinTone.explanation}
+                          </div>
+                        )}
+
+                        {/* 建議 (Advice) */}
+                        {selectedApptSkinTone.advice && (
+                          <div style={{ fontSize: "14px", color: "#2c5282", backgroundColor: "#ebf8ff", padding: "8px", borderRadius: "6px", lineHeight: "1.5" }}>
+                            <strong>建議：</strong>
+                            {selectedApptSkinTone.advice}
+                          </div>
+                        )}
+
+                        {/* 如果沒有解釋也沒有建議，才顯示提示 */}
+                        {!selectedApptSkinTone.explanation && !selectedApptSkinTone.advice && (
+                          <div style={{ color: "#888", fontSize: "13px" }}>尚無詳細文字分析</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: "#888" }}>無膚色資料 (請確認病患是否已上傳照片)</span>
+                    )}
                   </div>
                 </div>
-
-                {/* 區塊 2: AI 摘要 (從 medical_record 拿 - 新增的部分) */}
-                <div className="details-item" style={{ borderLeft: "4px solid #71d2c0" }}>
-                  <strong>AI 重點摘要：</strong>
-                  <div style={{ marginTop: "8px", lineHeight: "1.6", color: "#444" }}>
-                    {selectedApptAiRecord ? selectedApptAiRecord.ai_summary : "尚無資料"}
-                  </div>
+                <div className="modal-actions">
+                  <button onClick={closeDetailsModal} className="btn-primary">
+                    關閉
+                  </button>
                 </div>
-                {/* 區塊 3: 膚色分析狀況 (醫師端：只顯示純文字診斷) */}
-                <div className="details-item" style={{ borderLeft: "4px solid #f9698d" }}>
-                  <strong>皮膚狀況分析：</strong>
-                  {selectedApptSkinTone ? (
-                    <div style={{ marginTop: "8px" }}>
-                      {/* 解釋 (Explanation) */}
-                      {selectedApptSkinTone.explanation && (
-                        <div style={{ fontSize: "14px", color: "#333", marginBottom: "8px", lineHeight: "1.5" }}>
-                          <strong>分析：</strong>
-                          {selectedApptSkinTone.explanation}
-                        </div>
-                      )}
+              </div>
+            </div>
+          )}
 
-                      {/* 建議 (Advice) */}
-                      {selectedApptSkinTone.advice && (
-                        <div style={{ fontSize: "14px", color: "#2c5282", backgroundColor: "#ebf8ff", padding: "8px", borderRadius: "6px", lineHeight: "1.5" }}>
-                          <strong>建議：</strong>
-                          {selectedApptSkinTone.advice}
-                        </div>
-                      )}
+          <main className="content">
+            <div className="content-card">
+              <h2>{activeFeature.title}</h2>
+              <p>{activeFeature.description}</p>
 
-                      {/* 如果沒有解釋也沒有建議，才顯示提示 */}
-                      {!selectedApptSkinTone.explanation && !selectedApptSkinTone.advice && (
-                        <div style={{ color: "#888", fontSize: "13px" }}>尚無詳細文字分析</div>
-                      )}
+              {/*醫師看診列表介面 */}
+              {activeFeature.id === "doc_schedule" && (
+                <div className="doctor-dashboard">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <h3>
+                      待看診病患 ({doctorAppointments.length})
+                    </h3>
+                    <button
+                      onClick={fetchDoctorAppointments}
+                      className="btn-secondary"
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                      }}
+                    >
+                      重新整理
+                    </button>
+                  </div>
+
+                  {doctorAppointments.length === 0 ? (
+                    <div className="empty-state">
+                      <p>目前沒有預約資料</p>
                     </div>
                   ) : (
-                    <span style={{ color: "#888" }}>無膚色資料 (請確認病患是否已上傳照片)</span>
+                    <div className="appt-list">
+                      {doctorAppointments.map((appt) => (
+                        <div key={appt.id} className="appt-card">
+                          <div className="appt-info">
+                            <h4>
+                              <span className="appt-tag">
+                                {appt.time}
+                              </span>
+                              病患編號: {appt.patient_id}
+                            </h4>
+                            <p>日期: {appt.date}</p>
+                            <p>科別: {appt.department}</p>
+                            {appt.reason && (
+                              <p>原因: {appt.reason}</p>
+                            )}
+                          </div>
+                          <div>
+                            {/* 點擊觸發詳情彈窗 */}
+                            <button
+                              onClick={() => handleViewDetails(appt)}
+                              className="btn-primary"
+                              style={{
+                                fontSize: "14px",
+                                padding: "8px 16px",
+                              }}
+                            >
+                              查看詳情
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-              <div className="modal-actions">
-                <button onClick={closeDetailsModal} className="btn-primary">
-                  關閉
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              )}
 
-        <main className="content">
-          <div className="content-card">
-            <h2>{activeFeature.title}</h2>
-            <p>{activeFeature.description}</p>
-
-            {/*醫師看診列表介面 */}
-            {activeFeature.id === "doc_schedule" && (
-              <div className="doctor-dashboard">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "20px",
-                  }}
-                >
-                  <h3>
-                    待看診病患 ({doctorAppointments.length})
-                  </h3>
-                  <button
-                    onClick={fetchDoctorAppointments}
-                    className="btn-secondary"
-                    style={{
-                      padding: "8px 16px",
-                      fontSize: "13px",
-                    }}
-                  >
-                    重新整理
-                  </button>
+              {/* 服務介紹 */}
+              {activeFeature.id === "service" && lastMessage && (
+                <div className="message-preview">
+                  <strong>最新留言：</strong>
+                  <p>{lastMessage}</p>
                 </div>
+              )}
 
-                {doctorAppointments.length === 0 ? (
-                  <div className="empty-state">
-                    <p>目前沒有預約資料</p>
+              {/* 預約介面 */}
+              {activeFeature.id === "schedule" && (
+                <form className="appointment-form" onSubmit={handleAppointmentSubmit}>
+                  <div className="form-group">
+                    <label htmlFor="appointment-date">選擇日期</label>
+                    <input
+                      type="date"
+                      id="appointment-date"
+                      value={appointmentForm.date}
+                      onChange={(e) =>
+                        setAppointmentForm({ ...appointmentForm, date: e.target.value })
+                      }
+                      min={new Date().toISOString().split('T')[0]}
+                      required
+                      disabled={appointmentCompleted}
+                      style={appointmentCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    />
                   </div>
-                ) : (
-                  <div className="appt-list">
-                    {doctorAppointments.map((appt) => (
-                      <div key={appt.id} className="appt-card">
-                        <div className="appt-info">
-                          <h4>
-                            <span className="appt-tag">
-                              {appt.time}
-                            </span>
-                            病患編號: {appt.patient_id}
-                          </h4>
-                          <p>日期: {appt.date}</p>
-                          <p>科別: {appt.department}</p>
-                          {appt.reason && (
-                            <p>原因: {appt.reason}</p>
-                          )}
-                        </div>
-                        <div>
-                          {/* 點擊觸發詳情彈窗 */}
-                          <button
-                            onClick={() => handleViewDetails(appt)}
-                            className="btn-primary"
-                            style={{
-                              fontSize: "14px",
-                              padding: "8px 16px",
-                            }}
-                          >
-                            查看詳情
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="form-group">
+                    <label htmlFor="appointment-time">選擇時間</label>
+                    <select
+                      id="appointment-time"
+                      value={appointmentForm.time}
+                      onChange={(e) =>
+                        setAppointmentForm({ ...appointmentForm, time: e.target.value })
+                      }
+                      required
+                      disabled={appointmentCompleted}
+                      style={appointmentCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    >
+                      <option value="">請選擇時間</option>
+                      <option value="09:00">09:00</option>
+                      <option value="10:00">10:00</option>
+                      <option value="11:00">11:00</option>
+                      <option value="14:00">14:00</option>
+                      <option value="15:00">15:00</option>
+                      <option value="16:00">16:00</option>
+                      <option value="17:00">17:00</option>
+                    </select>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* 服務介紹 */}
-            {activeFeature.id === "service" && lastMessage && (
-              <div className="message-preview">
-                <strong>最新留言：</strong>
-                <p>{lastMessage}</p>
-              </div>
-            )}
-
-            {/* 預約介面 */}
-            {activeFeature.id === "schedule" && (
-              <form className="appointment-form" onSubmit={handleAppointmentSubmit}>
-                <div className="form-group">
-                  <label htmlFor="appointment-date">選擇日期</label>
-                  <input
-                    type="date"
-                    id="appointment-date"
-                    value={appointmentForm.date}
-                    onChange={(e) =>
-                      setAppointmentForm({ ...appointmentForm, date: e.target.value })
-                    }
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    disabled={appointmentCompleted}
-                    style={appointmentCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appointment-time">選擇時間</label>
-                  <select
-                    id="appointment-time"
-                    value={appointmentForm.time}
-                    onChange={(e) =>
-                      setAppointmentForm({ ...appointmentForm, time: e.target.value })
-                    }
-                    required
-                    disabled={appointmentCompleted}
-                    style={appointmentCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  >
-                    <option value="">請選擇時間</option>
-                    <option value="09:00">09:00</option>
-                    <option value="10:00">10:00</option>
-                    <option value="11:00">11:00</option>
-                    <option value="14:00">14:00</option>
-                    <option value="15:00">15:00</option>
-                    <option value="16:00">16:00</option>
-                    <option value="17:00">17:00</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appointment-department">選擇科別</label>
-                  <select
-                    id="appointment-department"
-                    value={appointmentForm.department}
-                    onChange={(e) => {
-                      const selectedDept = e.target.value;
-                      setAppointmentForm({
-                        ...appointmentForm,
-                        department: selectedDept,
-                        doctor: "", // 切換科別時清空醫師選擇
-                        doctorId: ""
-                      });
-                    }}
-                    required
-                    disabled={appointmentCompleted}
-                    style={appointmentCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  >
-                    <option value="">請選擇科別</option>
-                    {departments.map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appointment-doctor">選擇醫師</label>
-                  <select
-                    id="appointment-doctor"
-                    value={appointmentForm.doctorId}
-                    onChange={(e) => {
-                      const selectedDoctorId = e.target.value;
-                      const selectedDoctor = doctors.find(d => d.id.toString() === selectedDoctorId);
-                      setAppointmentForm({
-                        ...appointmentForm,
-                        doctorId: selectedDoctorId,
-                        doctor: selectedDoctor ? selectedDoctor.full_name : ""
-                      });
-                    }}
-                    required
-                    disabled={!appointmentForm.department || appointmentCompleted}
-                    style={appointmentCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  >
-                    <option value="">請選擇醫師</option>
-                    {doctors
-                      .filter(doc => doc.department === appointmentForm.department)
-                      .map((doctor) => (
-                        <option key={doctor.id} value={doctor.id}>
-                          {doctor.full_name}
+                  <div className="form-group">
+                    <label htmlFor="appointment-department">選擇科別</label>
+                    <select
+                      id="appointment-department"
+                      value={appointmentForm.department}
+                      onChange={(e) => {
+                        const selectedDept = e.target.value;
+                        setAppointmentForm({
+                          ...appointmentForm,
+                          department: selectedDept,
+                          doctor: "", // 切換科別時清空醫師選擇
+                          doctorId: ""
+                        });
+                      }}
+                      required
+                      disabled={appointmentCompleted}
+                      style={appointmentCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    >
+                      <option value="">請選擇科別</option>
+                      {departments.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
                         </option>
                       ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appointment-reason">預約原因</label>
-                  <textarea
-                    id="appointment-reason"
-                    placeholder="請簡述您的預約原因..."
-                    value={appointmentForm.reason}
-                    onChange={(e) =>
-                      setAppointmentForm({ ...appointmentForm, reason: e.target.value })
-                    }
-                    disabled={appointmentCompleted}
-                    style={appointmentCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  />
-                </div>
-                {appointmentCompleted && (
-                  <div style={{
-                    padding: "12px",
-                    borderRadius: "12px",
-                    background: "#fff7e0",
-                    border: "1px dashed #e7b86d",
-                    color: "#8a641f",
-                    marginBottom: "16px"
-                  }}>
-                    <strong>預約已完成</strong>
-                    <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
-                      您的預約資訊已確認，無法再修改。如需變更，請聯繫客服 (02) 3366-3366。
-                    </p>
+                    </select>
                   </div>
-                )}
-                <div className="form-actions">
-                  {!appointmentCompleted && (
-                    <>
-                      <button type="button" className="btn-secondary" onClick={() => {
+                  <div className="form-group">
+                    <label htmlFor="appointment-doctor">選擇醫師</label>
+                    <select
+                      id="appointment-doctor"
+                      value={appointmentForm.doctorId}
+                      onChange={(e) => {
+                        const selectedDoctorId = e.target.value;
+                        const selectedDoctor = doctors.find(d => d.id.toString() === selectedDoctorId);
                         setAppointmentForm({
-                          date: "",
-                          time: "",
-                          doctor: "",
-                          doctorId: "",
-                          department: "",
-                          reason: "",
+                          ...appointmentForm,
+                          doctorId: selectedDoctorId,
+                          doctor: selectedDoctor ? selectedDoctor.full_name : ""
                         });
-                        setAppointmentCompleted(false); // 清除時重置完成狀態
-                        updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
-                      }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        確認預約
-                      </button>
-                    </>
-                  )}
-                </div>
-              </form>
-            )}
-
-            {/* 填寫症狀介面 */}
-            {activeFeature.id === "symptom" && (
-              <form className="symptom-form" onSubmit={handleSymptomSubmit}>
-                <div className="form-group">
-                  <label htmlFor="symptom-description">主要症狀描述</label>
-                  <textarea
-                    id="symptom-description"
-                    placeholder="請詳細描述您的主要症狀..."
-                    value={symptomForm.description}
-                    onChange={(e) =>
-                      setSymptomForm({ ...symptomForm, description: e.target.value })
-                    }
-                    required
-                    disabled={symptomCompleted}
-                    style={symptomCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  />
-                </div>
-                <div className="symptom-category">
-                  <h3>常見症狀（可複選）</h3>
-                  <div className="checkbox-group">
-                    {commonSymptoms.map((symptom) => (
-                      <div
-                        key={symptom}
-                        className={`checkbox-item ${symptomForm.symptoms.includes(symptom) ? "checked" : ""
-                          } ${symptomCompleted ? "disabled" : ""}`}
-                        onClick={() => !symptomCompleted && toggleSymptom(symptom)}
-                        style={symptomCompleted ? {
-                          opacity: 0.6,
-                          cursor: "not-allowed",
-                          pointerEvents: "none"
-                        } : {}}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={symptomForm.symptoms.includes(symptom)}
-                          onChange={() => !symptomCompleted && toggleSymptom(symptom)}
-                          disabled={symptomCompleted}
-                        />
-                        <label>{symptom}</label>
-                      </div>
-                    ))}
+                      }}
+                      required
+                      disabled={!appointmentForm.department || appointmentCompleted}
+                      style={appointmentCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    >
+                      <option value="">請選擇醫師</option>
+                      {doctors
+                        .filter(doc => doc.department === appointmentForm.department)
+                        .map((doctor) => (
+                          <option key={doctor.id} value={doctor.id}>
+                            {doctor.full_name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="symptom-duration">症狀持續時間</label>
-                  <select
-                    id="symptom-duration"
-                    value={symptomForm.duration}
-                    onChange={(e) =>
-                      setSymptomForm({ ...symptomForm, duration: e.target.value })
-                    }
-                    required
-                    disabled={symptomCompleted}
-                    style={symptomCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  >
-                    <option value="">請選擇持續時間</option>
-                    <option value="1天以內">1天以內</option>
-                    <option value="2-3天">2-3天</option>
-                    <option value="4-7天">4-7天</option>
-                    <option value="1-2週">1-2週</option>
-                    <option value="2週以上">2週以上</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="symptom-severity">嚴重程度</label>
-                  <select
-                    id="symptom-severity"
-                    value={symptomForm.severity}
-                    onChange={(e) =>
-                      setSymptomForm({ ...symptomForm, severity: e.target.value })
-                    }
-                    required
-                    disabled={symptomCompleted}
-                    style={symptomCompleted ? {
-                      background: "#f5f5f5",
-                      cursor: "not-allowed",
-                      color: "#666"
-                    } : {}}
-                  >
-                    <option value="">請選擇嚴重程度</option>
-                    <option value="輕微">輕微</option>
-                    <option value="中等">中等</option>
-                    <option value="嚴重">嚴重</option>
-                    <option value="非常嚴重">非常嚴重</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="symptom-face-image">
-                    上傳臉部照片（.jpg，僅正面五官）
-                  </label>
-                  <input
-                    id="symptom-face-image"
-                    type="file"
-                    accept="image/jpeg"
-                    disabled={symptomCompleted}
-                    onChange={(e) => {
-                      if (symptomCompleted) return;
-                      const file = e.target.files && e.target.files[0];
-                      // 僅在有選擇檔案時更新狀態
-                      if (file) {
-                        setSymptomImageFile(file);
-                        setSymptomImageStatus(
-                          "已選擇檔案：" + (file.name || "未命名檔案")
-                        );
-                      } else {
-                        setSymptomImageFile(null);
-                        setSymptomImageStatus("");
+                  <div className="form-group">
+                    <label htmlFor="appointment-reason">預約原因</label>
+                    <textarea
+                      id="appointment-reason"
+                      placeholder="請簡述您的預約原因..."
+                      value={appointmentForm.reason}
+                      onChange={(e) =>
+                        setAppointmentForm({ ...appointmentForm, reason: e.target.value })
                       }
-                    }}
-                    style={symptomCompleted ? {
-                      opacity: 0.6,
-                      cursor: "not-allowed"
-                    } : {}}
-                  />
-                  {symptomImageStatus && (
-                    <small style={{ color: "#666" }}>
-                      {symptomImageStatus}
-                    </small>
-                  )}
-                </div>
-                {symptomCompleted && (
-                  <div style={{
-                    padding: "12px",
-                    borderRadius: "12px",
-                    background: "#fff7e0",
-                    border: "1px dashed #e7b86d",
-                    color: "#8a641f",
-                    marginBottom: "16px"
-                  }}>
-                    <strong>症狀資訊已提交</strong>
-                    <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
-                      您的症狀資訊已確認，無法再修改。如需變更，請聯繫客服 (02) 3366-3366。
-                    </p>
+                      disabled={appointmentCompleted}
+                      style={appointmentCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    />
                   </div>
-                )}
-                <div className="form-actions">
-                  {!symptomCompleted && (
-                    <>
-                      <button type="button" className="btn-secondary" onClick={() => {
-                        setSymptomForm({
-                          description: "",
-                          duration: "",
-                          severity: "",
-                          symptoms: [],
-                        });
-                        setSymptomCompleted(false); // 清除時重置完成狀態
-                        setSymptomImageFile(null);
-                        setSymptomImageStatus("");
-                      }}>
-                        清除
-                      </button>
-                      <button type="submit" className="btn-primary">
-                        提交症狀資訊
-                      </button>
-                    </>
-                  )}
-                </div>
-              </form>
-            )}
-
-            {activeFeature.id === "support" && (
-              <div className="ai-chat">
-                {/* 檢查表單是否都已完成 */}
-                {!isLoggedIn ? (
-                  <div className="ai-messages">
-                    <div className="ai-bubble bot" style={{
+                  {appointmentCompleted && (
+                    <div style={{
+                      padding: "12px",
+                      borderRadius: "12px",
                       background: "#fff7e0",
-                      border: "2px dashed #e7b86d",
-                      padding: "24px",
-                      textAlign: "left"
+                      border: "1px dashed #e7b86d",
+                      color: "#8a641f",
+                      marginBottom: "16px"
                     }}>
-                      <strong style={{ display: "block", marginBottom: "12px", fontSize: "18px", color: "#8a641f" }}>
-                        請先登入
-                      </strong>
-                      <div style={{ color: "#666", lineHeight: "1.8" }}>
-                        <p style={{ margin: "8px 0" }}>
-                          請先登入後才能使用 AI 問診功能。
-                        </p>
-                        <p style={{ marginTop: "16px", fontSize: "14px" }}>
-                          請點擊右上角選單進行登入或註冊。
-                        </p>
-                      </div>
+                      <strong>預約已完成</strong>
+                      <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                        您的預約資訊已確認，無法再修改。如需變更，請聯繫客服 (02) 3366-3366。
+                      </p>
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    {!appointmentCompleted && (
+                      <>
+                        <button type="button" className="btn-secondary" onClick={() => {
+                          setAppointmentForm({
+                            date: "",
+                            time: "",
+                            doctor: "",
+                            doctorId: "",
+                            department: "",
+                            reason: "",
+                          });
+                          setAppointmentCompleted(false); // 清除時重置完成狀態
+                          updateCurrentAppointmentId(null); // 清除預約 ID（同時更新 localStorage）
+                        }}>
+                          清除
+                        </button>
+                        <button type="submit" className="btn-primary">
+                          確認預約
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </form>
+              )}
+
+              {/* 填寫症狀介面 */}
+              {activeFeature.id === "symptom" && (
+                <form className="symptom-form" onSubmit={handleSymptomSubmit}>
+                  <div className="form-group">
+                    <label htmlFor="symptom-description">主要症狀描述</label>
+                    <textarea
+                      id="symptom-description"
+                      placeholder="請詳細描述您的主要症狀..."
+                      value={symptomForm.description}
+                      onChange={(e) =>
+                        setSymptomForm({ ...symptomForm, description: e.target.value })
+                      }
+                      required
+                      disabled={symptomCompleted}
+                      style={symptomCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    />
+                  </div>
+                  <div className="symptom-category">
+                    <h3>常見症狀（可複選）</h3>
+                    <div className="checkbox-group">
+                      {commonSymptoms.map((symptom) => (
+                        <div
+                          key={symptom}
+                          className={`checkbox-item ${symptomForm.symptoms.includes(symptom) ? "checked" : ""
+                            } ${symptomCompleted ? "disabled" : ""}`}
+                          onClick={() => !symptomCompleted && toggleSymptom(symptom)}
+                          style={symptomCompleted ? {
+                            opacity: 0.6,
+                            cursor: "not-allowed",
+                            pointerEvents: "none"
+                          } : {}}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={symptomForm.symptoms.includes(symptom)}
+                            onChange={() => !symptomCompleted && toggleSymptom(symptom)}
+                            disabled={symptomCompleted}
+                          />
+                          <label>{symptom}</label>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ) : (() => {
-                  // 檢查預約 ID（從 localStorage 恢復如果 state 沒有）
-                  const savedAppointmentId = localStorage.getItem("currentAppointmentId");
-                  const actualAppointmentId = currentAppointmentId || (savedAppointmentId ? parseInt(savedAppointmentId) : null);
+                  <div className="form-group">
+                    <label htmlFor="symptom-duration">症狀持續時間</label>
+                    <select
+                      id="symptom-duration"
+                      value={symptomForm.duration}
+                      onChange={(e) =>
+                        setSymptomForm({ ...symptomForm, duration: e.target.value })
+                      }
+                      required
+                      disabled={symptomCompleted}
+                      style={symptomCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    >
+                      <option value="">請選擇持續時間</option>
+                      <option value="1天以內">1天以內</option>
+                      <option value="2-3天">2-3天</option>
+                      <option value="4-7天">4-7天</option>
+                      <option value="1-2週">1-2週</option>
+                      <option value="2週以上">2週以上</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="symptom-severity">嚴重程度</label>
+                    <select
+                      id="symptom-severity"
+                      value={symptomForm.severity}
+                      onChange={(e) =>
+                        setSymptomForm({ ...symptomForm, severity: e.target.value })
+                      }
+                      required
+                      disabled={symptomCompleted}
+                      style={symptomCompleted ? {
+                        background: "#f5f5f5",
+                        cursor: "not-allowed",
+                        color: "#666"
+                      } : {}}
+                    >
+                      <option value="">請選擇嚴重程度</option>
+                      <option value="輕微">輕微</option>
+                      <option value="中等">中等</option>
+                      <option value="嚴重">嚴重</option>
+                      <option value="非常嚴重">非常嚴重</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="symptom-face-image">
+                      上傳臉部照片（.jpg，僅正面五官）
+                    </label>
+                    <input
+                      id="symptom-face-image"
+                      type="file"
+                      accept="image/jpeg"
+                      disabled={symptomCompleted}
+                      onChange={(e) => {
+                        if (symptomCompleted) return;
+                        const file = e.target.files && e.target.files[0];
+                        // 僅在有選擇檔案時更新狀態
+                        if (file) {
+                          setSymptomImageFile(file);
+                          setSymptomImageStatus(
+                            "已選擇檔案：" + (file.name || "未命名檔案")
+                          );
+                        } else {
+                          setSymptomImageFile(null);
+                          setSymptomImageStatus("");
+                        }
+                      }}
+                      style={symptomCompleted ? {
+                        opacity: 0.6,
+                        cursor: "not-allowed"
+                      } : {}}
+                    />
+                    {symptomImageStatus && (
+                      <small style={{ color: "#666" }}>
+                        {symptomImageStatus}
+                      </small>
+                    )}
+                  </div>
+                  {symptomCompleted && (
+                    <div style={{
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: "#fff7e0",
+                      border: "1px dashed #e7b86d",
+                      color: "#8a641f",
+                      marginBottom: "16px"
+                    }}>
+                      <strong>症狀資訊已提交</strong>
+                      <p style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
+                        您的症狀資訊已確認，無法再修改。如需變更，請聯繫客服 (02) 3366-3366。
+                      </p>
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    {!symptomCompleted && (
+                      <>
+                        <button type="button" className="btn-secondary" onClick={() => {
+                          setSymptomForm({
+                            description: "",
+                            duration: "",
+                            severity: "",
+                            symptoms: [],
+                          });
+                          setSymptomCompleted(false); // 清除時重置完成狀態
+                          setSymptomImageFile(null);
+                          setSymptomImageStatus("");
+                        }}>
+                          清除
+                        </button>
+                        <button type="submit" className="btn-primary">
+                          提交症狀資訊
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </form>
+              )}
 
-                  // 如果 localStorage 有但 state 沒有，恢復狀態
-                  if (!currentAppointmentId && savedAppointmentId) {
-                    updateCurrentAppointmentId(parseInt(savedAppointmentId));
-                  }
-
-                  return !actualAppointmentId ? (
+              {activeFeature.id === "support" && (
+                <div className="ai-chat">
+                  {/* 檢查表單是否都已完成 */}
+                  {!isLoggedIn ? (
                     <div className="ai-messages">
                       <div className="ai-bubble bot" style={{
                         background: "#fff7e0",
@@ -2562,172 +2567,203 @@
                         textAlign: "left"
                       }}>
                         <strong style={{ display: "block", marginBottom: "12px", fontSize: "18px", color: "#8a641f" }}>
-                          請先完成預約
+                          請先登入
                         </strong>
                         <div style={{ color: "#666", lineHeight: "1.8" }}>
                           <p style={{ margin: "8px 0" }}>
-                            ❌ 尚未完成「預約」表單
+                            請先登入後才能使用 AI 問診功能。
                           </p>
                           <p style={{ marginTop: "16px", fontSize: "14px" }}>
-                            請先前往左側功能表完成預約，完成後即可使用 AI 問診功能。
+                            請點擊右上角選單進行登入或註冊。
                           </p>
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <>
+                  ) : (() => {
+                    // 檢查預約 ID（從 localStorage 恢復如果 state 沒有）
+                    const savedAppointmentId = localStorage.getItem("currentAppointmentId");
+                    const actualAppointmentId = currentAppointmentId || (savedAppointmentId ? parseInt(savedAppointmentId) : null);
+
+                    // 如果 localStorage 有但 state 沒有，恢復狀態
+                    if (!currentAppointmentId && savedAppointmentId) {
+                      updateCurrentAppointmentId(parseInt(savedAppointmentId));
+                    }
+
+                    return !actualAppointmentId ? (
                       <div className="ai-messages">
-                        {conversation.length === 0 ? (
-                          <div className="ai-bubble bot">
-                            歡迎使用 AI 問診示範介面，輸入訊息後可預覽未來模型的回覆流程。
+                        <div className="ai-bubble bot" style={{
+                          background: "#fff7e0",
+                          border: "2px dashed #e7b86d",
+                          padding: "24px",
+                          textAlign: "left"
+                        }}>
+                          <strong style={{ display: "block", marginBottom: "12px", fontSize: "18px", color: "#8a641f" }}>
+                            請先完成預約
+                          </strong>
+                          <div style={{ color: "#666", lineHeight: "1.8" }}>
+                            <p style={{ margin: "8px 0" }}>
+                              ❌ 尚未完成「預約」表單
+                            </p>
+                            <p style={{ marginTop: "16px", fontSize: "14px" }}>
+                              請先前往左側功能表完成預約，完成後即可使用 AI 問診功能。
+                            </p>
                           </div>
-                        ) : (
-                          conversation.map((message, index) => {
-                            // [修正] 特殊卡片渲染邏輯
-                            if (message.role === "summary_card") {
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="ai-messages">
+                          {conversation.length === 0 ? (
+                            <div className="ai-bubble bot">
+                              歡迎使用 AI 問診示範介面，輸入訊息後可預覽未來模型的回覆流程。
+                            </div>
+                          ) : (
+                            conversation.map((message, index) => {
+                              // [修正] 特殊卡片渲染邏輯
+                              if (message.role === "summary_card") {
+                                return (
+                                  <div key={`summary-${index}`} style={{
+                                    alignSelf: "center", width: "100%", maxWidth: "1000px",
+                                    margin: "16px 0", borderRadius: "12px", overflow: "visible",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)", border: "4px solid #fff",
+                                    backgroundColor: "#f9f9f9"
+                                  }}>
+                                    {message.content.skinImage ? (
+                                      <img
+                                        src={`data:image/png;base64,${message.content.skinImage}`}
+                                        alt="AI 分析小卡"
+                                        style={{ width: "100%", display: "block", height: "auto" }}
+                                      />
+                                    ) : (
+                                      // 這是新增的：如果沒圖片，會顯示這個，而不是消失
+                                      <div style={{ padding: "40px 20px", textAlign: "center", color: "#666" }}>
+                                        <h3>⚠️ 無法顯示圖片</h3>
+                                        <p style={{ fontSize: "14px" }}>
+                                          可能是後端尚未分析完成，或資料庫無紀錄。<br />
+                                          (請按 F12 查看 Console 錯誤訊息)
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              // [原本] 普通對話氣泡
                               return (
-                                <div key={`summary-${index}`} style={{
-                                  alignSelf: "center", width: "100%", maxWidth: "1000px",
-                                  margin: "16px 0", borderRadius: "12px", overflow: "visible",
-                                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)", border: "4px solid #fff",
-                                  backgroundColor: "#f9f9f9"
-                                }}>
-                                  {message.content.skinImage ? (
-                                    <img
-                                      src={`data:image/png;base64,${message.content.skinImage}`}
-                                      alt="AI 分析小卡"
-                                      style={{ width: "100%", display: "block", height: "auto" }}
-                                    />
-                                  ) : (
-                                    // 這是新增的：如果沒圖片，會顯示這個，而不是消失
-                                    <div style={{ padding: "40px 20px", textAlign: "center", color: "#666" }}>
-                                      <h3>⚠️ 無法顯示圖片</h3>
-                                      <p style={{ fontSize: "14px" }}>
-                                        可能是後端尚未分析完成，或資料庫無紀錄。<br />
-                                        (請按 F12 查看 Console 錯誤訊息)
-                                      </p>
-                                    </div>
-                                  )}
+                                <div
+                                  key={`${message.role}-${index}`}
+                                  className={`ai-bubble ${message.role === "user" ? "user" : "bot"}`}
+                                >
+                                  {message.content}
                                 </div>
                               );
-                            }
-
-                            // [原本] 普通對話氣泡
-                            return (
-                              <div
-                                key={`${message.role}-${index}`}
-                                className={`ai-bubble ${message.role === "user" ? "user" : "bot"}`}
+                            }))}
+                          {chatEnded && (
+                            <div className="ai-bubble bot" style={{
+                              background: "#fff7e0",
+                              border: "2px dashed #e7b86d",
+                              alignSelf: "center",
+                              maxWidth: "90%",
+                              textAlign: "center"
+                            }}>
+                              <strong style={{ color: "#8a641f" }}>對話已結束</strong>
+                              <p style={{ margin: "8px 0 0 0", color: "#666" }}>
+                                您已結束本次問診對話，後續將由醫師進行診斷。
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {!chatEnded ? (
+                          <div className="ai-input"
+                            onKeyDown={(e) => {
+                              // 防止整個 div 區域的 Enter 鍵觸發表單提交
+                              if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+                                e.preventDefault();
+                              }
+                            }}
+                          >
+                            <textarea
+                              placeholder="描述症狀或提出問題..."
+                              value={aiDraft}
+                              onChange={(event) => setAiDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                // 按 Enter 鍵（不按 Shift）時送出訊息
+                                if (event.key === "Enter" && !event.shiftKey) {
+                                  event.preventDefault(); // 防止換行和表單提交
+                                  event.stopPropagation(); // 阻止事件冒泡
+                                  handleAiSend(event); // 送出訊息
+                                }
+                              }}
+                            />
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault(); // 防止任何預設行為
+                                  e.stopPropagation(); // 阻止事件冒泡
+                                  handleAiSend(e);
+                                }}
                               >
-                                {message.content}
-                              </div>
-                            );
-                          }))}
-                        {chatEnded && (
-                          <div className="ai-bubble bot" style={{
-                            background: "#fff7e0",
-                            border: "2px dashed #e7b86d",
-                            alignSelf: "center",
-                            maxWidth: "90%",
-                            textAlign: "center"
+                                送出
+                              </button>
+                              <button
+                                type="button"
+                                // ... 其他樣式保持不變 ...
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (window.confirm("確定要結束對話嗎？將為您生成健康摘要小卡。")) {
+                                    setChatEnded(true);
+                                    fetchAiSummary(); //呼叫函式
+                                  }
+                                }}
+                                style={{
+                                  padding: "8px 16px",
+                                  borderRadius: "12px",
+                                  border: "2px solid #c2c2c2",
+                                  background: "#fff",
+                                  color: "#666",
+                                  fontWeight: "bold",
+                                  cursor: "pointer",
+                                  transition: "all 0.2s ease",
+                                  fontSize: "13px"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = "#f5f5f5";
+                                  e.target.style.borderColor = "#999";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = "#fff";
+                                  e.target.style.borderColor = "#c2c2c2";
+                                }}
+                              >
+                                結束對話
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: "14px",
+                            borderRadius: "16px",
+                            background: "#f5f5f5",
+                            textAlign: "center",
+                            color: "#666"
                           }}>
-                            <strong style={{ color: "#8a641f" }}>對話已結束</strong>
-                            <p style={{ margin: "8px 0 0 0", color: "#666" }}>
-                              您已結束本次問診對話，後續將由醫師進行診斷。
+                            <p style={{ margin: 0 }}>
+                              對話已結束，無法繼續發送訊息
                             </p>
                           </div>
                         )}
-                      </div>
-                      {!chatEnded ? (
-                        <div className="ai-input"
-                          onKeyDown={(e) => {
-                            // 防止整個 div 區域的 Enter 鍵觸發表單提交
-                            if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
-                              e.preventDefault();
-                            }
-                          }}
-                        >
-                          <textarea
-                            placeholder="描述症狀或提出問題..."
-                            value={aiDraft}
-                            onChange={(event) => setAiDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              // 按 Enter 鍵（不按 Shift）時送出訊息
-                              if (event.key === "Enter" && !event.shiftKey) {
-                                event.preventDefault(); // 防止換行和表單提交
-                                event.stopPropagation(); // 阻止事件冒泡
-                                handleAiSend(event); // 送出訊息
-                              }
-                            }}
-                          />
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault(); // 防止任何預設行為
-                                e.stopPropagation(); // 阻止事件冒泡
-                                handleAiSend(e);
-                              }}
-                            >
-                              送出
-                            </button>
-                            <button
-                              type="button"
-                              // ... 其他樣式保持不變 ...
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (window.confirm("確定要結束對話嗎？將為您生成健康摘要小卡。")) {
-                                  setChatEnded(true);
-                                  fetchAiSummary(); //呼叫函式
-                                }
-                              }}
-                              style={{
-                                padding: "8px 16px",
-                                borderRadius: "12px",
-                                border: "2px solid #c2c2c2",
-                                background: "#fff",
-                                color: "#666",
-                                fontWeight: "bold",
-                                cursor: "pointer",
-                                transition: "all 0.2s ease",
-                                fontSize: "13px"
-                              }}
-                              onMouseEnter={(e) => {
-                                e.target.style.background = "#f5f5f5";
-                                e.target.style.borderColor = "#999";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.target.style.background = "#fff";
-                                e.target.style.borderColor = "#c2c2c2";
-                              }}
-                            >
-                              結束對話
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{
-                          padding: "14px",
-                          borderRadius: "16px",
-                          background: "#f5f5f5",
-                          textAlign: "center",
-                          color: "#666"
-                        }}>
-                          <p style={{ margin: 0 }}>
-                            對話已結束，無法繼續發送訊息
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        </main>
-      </div>
-    );
-      }
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>

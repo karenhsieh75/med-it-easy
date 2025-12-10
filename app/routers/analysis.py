@@ -83,7 +83,7 @@ async def analyze_skin_tone(
     diagnosis_text = f"{result.get('explanation', '')} {result.get('advice', '')}".strip()
 
     try:
-        generator = SkinToneCardGenerator(CARD_TEMPLATE, CARD_FONT, session)
+        generator = SkinToneCardGenerator(template_path=CARD_TEMPLATE, font_path=CARD_FONT, session=session)
         rose_base64 = analysis.get("_analysis_rose_plot_base64")
         if not rose_base64:
             raise HTTPException(status_code=500, detail="缺少玫瑰圖資料，無法生成卡片")
@@ -109,6 +109,7 @@ async def analyze_skin_tone(
         "status": analysis.get("status"),
         "result": result,
         "appointment_context": appointment_fields,
+        "_analysis_rose_plot_base64": rose_base64,
     }
 
     record = AnalysisRecord(
@@ -165,3 +166,72 @@ def get_record(record_id: int, session: Session = Depends(get_session)):
         "analysis_result": json.loads(record.analysis_result or "{}"),
         "created_at": record.created_at.isoformat(),
     }
+
+@router.post("/regenerate-card/{appointment_id}")
+def regenerate_card_with_advice(
+    appointment_id: int,
+    session: Session = Depends(get_session),
+):
+    """
+    患者結束對話後，重新生成小卡。
+    這次能從資料庫取到最新的 ai_advice。
+    """
+    try:
+        # 1. 取得該預約的最新分析記錄
+        analysis_record = session.exec(
+            select(AnalysisRecord)
+            .where(AnalysisRecord.analysis_type == "skin_tone")
+            .order_by(AnalysisRecord.created_at.desc())
+        ).first()
+        
+        if not analysis_record:
+            raise HTTPException(status_code=404, detail="找不到分析記錄")
+        
+        appointment = session.get(Appointment, appointment_id)
+        if not appointment:
+            raise HTTPException(status_code=404, detail="找不到預約")
+        
+        # 2. 從資料庫取出儲存的資料
+        analysis_result_db = json.loads(analysis_record.analysis_result or "{}")
+        rose_base64 = analysis_result_db.get("_analysis_rose_plot_base64")
+        result = analysis_result_db.get("result", {})
+        appointment_context = analysis_result_db.get("appointment_context", {})
+        
+        if not rose_base64:
+            raise HTTPException(status_code=500, detail="缺少玫瑰圖資料")
+        
+        diagnosis_text = f"{result.get('explanation', '')} {result.get('advice', '')}".strip()
+        
+        # 3. 重新生成小卡（這次能從資料庫取到 ai_advice）
+        generator = SkinToneCardGenerator(
+            template_path=CARD_TEMPLATE,
+            font_path=CARD_FONT,
+            session=session  # ✅ 傳入 session，讓它查詢 MedicalRecord
+        )
+        
+        rose_bytes = base64.b64decode(rose_base64)
+        analysis_card_base64 = generator.generate_card(
+            rose_chart_bytes=rose_bytes,
+            diagnosis_text=diagnosis_text,
+            appointment_fields=appointment_context,
+            appointment_id=appointment_id,
+        )
+        
+        # print(f" 成功重新生成小卡（appointment_id={appointment_id}）")
+        
+        return {
+            "id": analysis_record.id,
+            "patient_id": analysis_record.patient_id,
+            "analysis_type": analysis_record.analysis_type,
+            "analysis_result": {
+                **analysis_result_db,
+                "analysis_card_base64": analysis_card_base64,  # ✅ 新的小卡，包含 ai_advice
+            },
+            "created_at": analysis_record.created_at.isoformat(),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f" 重新生成小卡失敗: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

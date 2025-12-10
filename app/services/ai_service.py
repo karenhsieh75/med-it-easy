@@ -10,7 +10,7 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel('gemini-2.0-flash')
 
-def generate_ai_summary(appointment_id: int, session: Session) -> Tuple[str, str]:
+def generate_ai_summary(appointment_id: int, session: Session) -> Tuple[str, str, str]:
     ai_summary = None
     ai_disease_prediction = None
     
@@ -70,7 +70,7 @@ def generate_ai_summary(appointment_id: int, session: Session) -> Tuple[str, str
 
             3. **advice** (建議):
             - 提供患者在看診前的建議
-            - 約 100-150 字
+            - 約 20-40 字
             - 不要建議患者吃什麼藥，請建議運動、作息、睡眠、飲食、心態相關內容
             - 語氣請保持親切、像一位專業的護理師
 

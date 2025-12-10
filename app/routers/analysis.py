@@ -17,7 +17,7 @@ from ..models import AnalysisRecord, Appointment, User, UserRole
 router = APIRouter(prefix="/api/analysis", tags=["膚色分析"])
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
-CARD_TEMPLATE = ASSETS_DIR / "cardd.png"
+CARD_TEMPLATE = ASSETS_DIR / "c.png"
 CARD_FONT = ASSETS_DIR / "Iansui-Regular.ttf"
 
 

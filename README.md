@@ -58,12 +58,19 @@ Create a `.env` file in the root directory and add your Google Gemini API key:
 GOOGLE_API_KEY=
 ```
 
-## ▶️ Run the App
+
 ### Mock database
 
 ```bash
 uv run seed_data.py
 ```
+<!-- 安裝 vscode SQLite Viewer 的 extension 則可以看到完整 med-it-easy.db-->
+
+### 關鍵套件
+```bash
+pip install -r requirements.txt
+```
+
 
 ### Start the app
 

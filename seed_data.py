@@ -11,7 +11,7 @@ from app.models import (
     MedicalRecord,
 )
 
-
+# 前五筆預約資料都是測試用的
 def create_fake_data():
     # 1. 確保資料表存在
     create_db_and_tables()
@@ -27,12 +27,14 @@ def create_fake_data():
         # --- 2. 建立醫師 ---
         doctors = [
             User(
-                username=f"dr_wang_{user_offset + 1}",
+                username=f"dr_wang_{user_offset + 1}",  
                 password_hash="secret123",
                 full_name="王大明醫師",
                 role=UserRole.DOCTOR,
                 department="內科",
             ),
+            # username= dr_wang_1 , password= secret123
+
             User(
                 username=f"dr_lee_{user_offset + 2}",
                 password_hash="secret123",
@@ -40,6 +42,8 @@ def create_fake_data():
                 role=UserRole.DOCTOR,
                 department="外科",
             ),
+            # username= dr_lee_2 , password= secret123
+
             User(
                 username=f"dr_chen_{user_offset + 3}",
                 password_hash="secret123",
@@ -47,6 +51,7 @@ def create_fake_data():
                 role=UserRole.DOCTOR,
                 department="小兒科",
             ),
+            # username= dr_chen_3 , password= secret123
         ]
         session.add_all(doctors)
         session.commit()

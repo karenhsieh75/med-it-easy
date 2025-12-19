@@ -1,0 +1,13 @@
+# requirements.txt
+fastapi
+uvicorn
+
+# 關鍵
+mediapipe==0.10.31
+opencv-python
+numpy
+matplotlib
+scikit-image
+
+# Python 版本限制
+# Python >=3.9,<3.11
